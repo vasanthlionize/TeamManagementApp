@@ -3,20 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Management Dashboard</title>
+    <title>AI T19 - Team Management Dashboard</title>
+    
+    <!-- External Libraries -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <!-- Local CSS -->
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Connection Status -->
+    <div id="connectionStatus" class="connection-status connecting">
+        <i class="fas fa-spinner fa-spin"></i> Starting App...
+    </div>
+
     <div class="container">
+        <!-- Header -->
         <div class="header">
             <h1><i class="fas fa-users"></i> AI T19</h1>
             <p>Professional Team Management System</p>
-            <small>Powered By VasanthaKumar N</small>
+            <small>Powered By VasanthaKumar N | Real-time Multi-user Sync</small>
         </div>
 
+        <!-- Navigation -->
         <div class="nav-tabs">
             <button class="nav-tab active" data-tab="attendance">
                 <i class="fas fa-user-check"></i> Attendance
@@ -35,7 +49,7 @@
             </button>
         </div>
 
-        <!-- Messages Container -->
+        <!-- Message Container -->
         <div id="messageContainer"></div>
 
         <!-- Attendance Tab -->
@@ -59,13 +73,13 @@
             <div class="form-group">
                 <label><i class="fas fa-check-circle"></i> Attendance Status</label>
                 <div class="radio-group">
-                    <label class="radio-option" id="presentOption">
+                    <label class="radio-option">
                         <input type="radio" name="attendanceStatus" value="present">
                         <span class="status-badge status-present">
                             <i class="fas fa-check"></i> Present
                         </span>
                     </label>
-                    <label class="radio-option" id="absentOption">
+                    <label class="radio-option">
                         <input type="radio" name="attendanceStatus" value="absent">
                         <span class="status-badge status-absent">
                             <i class="fas fa-times"></i> Absent
@@ -80,35 +94,6 @@
                 </button>
             </div>
 
-            <!-- Sort Controls -->
-            <div class="sort-controls">
-                <h3><i class="fas fa-sort"></i> View Attendance Records</h3>
-                <div class="sort-grid">
-                    <div class="form-group">
-                        <label for="sortType"><i class="fas fa-filter"></i> Sort By</label>
-                        <select id="sortType" class="form-control">
-                            <option value="date">By Date</option>
-                            <option value="month">By Month</option>
-                            <option value="year">By Year</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group" id="monthYearSelector" style="display: none;">
-                        <label for="monthYearInput"><i class="fas fa-calendar-alt"></i> Select Period</label>
-                        <input type="month" id="monthYearInput" class="form-control">
-                    </div>
-                    
-                    <div class="form-group" id="yearSelector" style="display: none;">
-                        <label for="yearInput"><i class="fas fa-calendar"></i> Select Year</label>
-                        <input type="number" id="yearInput" class="form-control" min="2020" max="2030">
-                    </div>
-                </div>
-                
-                <button class="btn btn-secondary" id="filterAttendanceBtn">
-                    <i class="fas fa-search"></i> Filter Records
-                </button>
-            </div>
-            
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-number" id="presentCount">0</div>
@@ -131,49 +116,84 @@
             <div id="membersList" class="members-grid"></div>
         </div>
 
-        <!-- Tasks Tab -->
+        <!-- Fixed Tasks Tab with Proper Alignment -->
         <div id="tasks" class="tab-content">
             <h2 class="page-title">Task Management</h2>
             
-            <div class="form-grid">
-                <div class="form-group">
-                    <label for="memberSelect"><i class="fas fa-user"></i> Select Member</label>
-                    <select id="memberSelect" class="form-control">
-                        <option value="">Select a member...</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="form-group">
-                <label for="taskDescription"><i class="fas fa-clipboard-list"></i> Task Description</label>
-                <textarea id="taskDescription" class="form-control" rows="3" placeholder="Describe the completed task..."></textarea>
-            </div>
-            
-            <div class="btn-group">
-                <button class="btn btn-success" id="addTaskBtn">
-                    <i class="fas fa-plus"></i> Add Task
-                </button>
-            </div>
-
-            <!-- Tasks Sort Controls -->
-            <div class="sort-controls">
-                <h3><i class="fas fa-sort"></i> Sort Tasks</h3>
-                <div class="sort-grid">
+            <!-- Fixed Member Selection with Proper Alignment -->
+            <div class="task-control-section">
+                <div class="task-selector-container">
                     <div class="form-group">
-                        <label for="taskSortType"><i class="fas fa-filter"></i> Sort By</label>
-                        <select id="taskSortType" class="form-control">
-                            <option value="newest">Newest First</option>
-                            <option value="oldest">Oldest First</option>
-                            <option value="member">By Member</option>
+                        <label for="taskMemberSelect"><i class="fas fa-user"></i> Select Member</label>
+                        <select id="taskMemberSelect" class="form-control">
+                            <option value="">Choose a member to view/manage tasks...</option>
                         </select>
                     </div>
+                    <div class="btn-container">
+                        <button class="btn btn-primary" id="loadTasksBtn">
+                            <i class="fas fa-eye"></i> Load Tasks
+                        </button>
+                    </div>
                 </div>
-                <button class="btn btn-secondary" id="sortTasksBtn">
-                    <i class="fas fa-sort"></i> Apply Sort
-                </button>
             </div>
             
-            <div id="tasksDisplay" class="members-grid"></div>
+            <!-- Task Dashboard with Better Layout -->
+            <div id="taskDashboard" class="task-dashboard" style="display: none;">
+                <!-- Member Info Header -->
+                <div class="member-info-header">
+                    <div class="member-name-display">
+                        <i class="fas fa-user-circle"></i>
+                        <span id="selectedMemberName">Member Name</span>
+                    </div>
+                    <div class="task-summary-stats">
+                        <div class="stat-item">
+                            <span class="stat-number" id="memberTaskCount">0</span>
+                            <span class="stat-label">Total Tasks</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number" id="memberCompletedTasks">0</span>
+                            <span class="stat-label">Completed</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number" id="memberPendingTasks">0</span>
+                            <span class="stat-label">Pending</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Task Management Section -->
+                <div class="task-management-section">
+                    <!-- Add Task Section -->
+                    <div class="task-actions">
+                        <h3><i class="fas fa-plus-circle"></i> Add New Regular Task</h3>
+                        <div class="add-task-container">
+                            <div class="task-input-group">
+                                <textarea id="newTaskDescription" class="form-control" rows="2" placeholder="Enter task description..."></textarea>
+                            </div>
+                            <div class="task-btn-group">
+                                <button class="btn btn-success" id="addNewTaskBtn">
+                                    <i class="fas fa-plus"></i> Add Task
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Task Lists -->
+                    <div class="task-lists">
+                        <!-- Regular Tasks -->
+                        <div class="task-section">
+                            <h4><i class="fas fa-list-check"></i> Regular Completed Tasks</h4>
+                            <div id="regularTasksList" class="tasks-container"></div>
+                        </div>
+                        
+                        <!-- Assigned Tasks -->
+                        <div class="task-section">
+                            <h4><i class="fas fa-clipboard-check"></i> Assigned Tasks</h4>
+                            <div id="assignedTasksList" class="tasks-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Ideas Tab -->
@@ -199,36 +219,47 @@
                     <i class="fas fa-share"></i> Share Idea
                 </button>
             </div>
-
-            <!-- Ideas Sort Controls -->
-            <div class="sort-controls">
-                <h3><i class="fas fa-sort"></i> Sort Ideas</h3>
-                <div class="sort-grid">
-                    <div class="form-group">
-                        <label for="ideaSortType"><i class="fas fa-filter"></i> Sort By</label>
-                        <select id="ideaSortType" class="form-control">
-                            <option value="newest">Newest First</option>
-                            <option value="oldest">Oldest First</option>
-                            <option value="member">By Member</option>
-                        </select>
-                    </div>
-                </div>
-                <button class="btn btn-secondary" id="sortIdeasBtn">
-                    <i class="fas fa-sort"></i> Apply Sort
-                </button>
-            </div>
             
             <div id="ideasBoard" class="idea-board"></div>
         </div>
 
-        <!-- Overview Tab -->
+        <!-- Enhanced Overview Tab with Category-wise PDF -->
         <div id="overview" class="tab-content">
             <h2 class="page-title">Analytics Dashboard</h2>
             
-            <div class="btn-group">
-                <button class="btn btn-danger" id="exportPdfBtn">
-                    <i class="fas fa-file-pdf"></i> Export as PDF
-                </button>
+            <!-- Category-wise PDF Export Section -->
+            <div class="export-controls-section">
+                <h3><i class="fas fa-file-export"></i> Category-wise Report Export</h3>
+                <div class="export-controls">
+                    <div class="export-selector">
+                        <div class="form-group">
+                            <label for="exportCategory"><i class="fas fa-filter"></i> Select Report Category</label>
+                            <select id="exportCategory" class="form-control">
+                                <option value="all">📊 Complete Team Report (All Data)</option>
+                                <option value="attendance">👥 Attendance Report Only</option>
+                                <option value="tasks">📋 Tasks Report Only</option>
+                                <option value="ideas">💡 Ideas Report Only</option>
+                                <option value="performance">🏆 Performance Analysis Report</option>
+                                <option value="member-individual">👤 Individual Member Report</option>
+                            </select>
+                        </div>
+                        <!-- Individual Member Selection (shown when member-individual is selected) -->
+                        <div class="form-group" id="memberSelectGroup" style="display: none;">
+                            <label for="individualMemberSelect"><i class="fas fa-user"></i> Select Member</label>
+                            <select id="individualMemberSelect" class="form-control">
+                                <option value="">Choose member for individual report...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="export-actions">
+                        <button class="btn btn-danger" id="exportCategoryPdfBtn">
+                            <i class="fas fa-file-pdf"></i> Generate PDF Report
+                        </button>
+                        <button class="btn btn-info" id="previewReportBtn">
+                            <i class="fas fa-eye"></i> Preview Report
+                        </button>
+                    </div>
+                </div>
             </div>
             
             <div class="stats-grid">
@@ -251,6 +282,12 @@
             </div>
             
             <div id="performanceSummary"></div>
+            
+            <!-- Report Preview Section -->
+            <div id="reportPreview" class="report-preview-section" style="display: none;">
+                <h3><i class="fas fa-file-alt"></i> Report Preview</h3>
+                <div id="reportPreviewContent" class="report-preview-content"></div>
+            </div>
         </div>
 
         <!-- Admin Panel -->
@@ -258,7 +295,7 @@
             <div id="adminLogin" class="login-form">
                 <h2><i class="fas fa-shield-alt"></i> Admin Access</h2>
                 <div class="form-group">
-                    <label for="adminPassword"><i class="fas fa-key"></i> Password</label>
+                    <label for="adminPassword"><i class="fas fa-key"></i> Enter Password</label>
                     <input type="password" id="adminPassword" class="form-control" placeholder="Enter admin password">
                 </div>
                 <button class="btn btn-primary" id="adminLoginBtn" style="width: 100%;">
@@ -272,20 +309,14 @@
             <div id="adminPanel" style="display: none;">
                 <div class="admin-panel">
                     <h2><i class="fas fa-crown"></i> Admin Control Panel</h2>
-                    <p>Welcome to the admin dashboard. Here you can manage team data and system settings.</p>
+                    <p>Welcome to the admin dashboard. Real-time sync is active.</p>
                     
                     <div class="admin-controls">
                         <button class="admin-btn" id="exportDataBtn">
-                            <i class="fas fa-download"></i> Export Data
-                        </button>
-                        <button class="admin-btn" id="exportPdfAdminBtn">
-                            <i class="fas fa-file-pdf"></i> Export PDF
+                            <i class="fas fa-download"></i> Export JSON
                         </button>
                         <button class="admin-btn" id="clearDataBtn">
                             <i class="fas fa-trash"></i> Clear All Data
-                        </button>
-                        <button class="admin-btn" id="resetAttendanceBtn">
-                            <i class="fas fa-refresh"></i> Reset Attendance
                         </button>
                         <button class="admin-btn" id="logoutAdminBtn">
                             <i class="fas fa-sign-out-alt"></i> Logout
@@ -293,7 +324,52 @@
                     </div>
                 </div>
 
-                <!-- Member Management Section -->
+                <!-- Simple Task Assignment -->
+                <div class="backup-section">
+                    <h3><i class="fas fa-clipboard-check"></i> Assign Task to Member</h3>
+                    
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="assignTaskMember"><i class="fas fa-user"></i> Select Member</label>
+                            <select id="assignTaskMember" class="form-control">
+                                <option value="">Select member...</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="assignTaskTitle"><i class="fas fa-heading"></i> Task Title</label>
+                        <input type="text" id="assignTaskTitle" class="form-control" placeholder="Enter task title">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="assignTaskDescription"><i class="fas fa-align-left"></i> Task Description</label>
+                        <textarea id="assignTaskDescription" class="form-control" rows="3" placeholder="Task description"></textarea>
+                    </div>
+                    
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="taskDeadline"><i class="fas fa-calendar-day"></i> Deadline</label>
+                            <input type="date" id="taskDeadline" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="taskPriority"><i class="fas fa-flag"></i> Priority</label>
+                            <select id="taskPriority" class="form-control">
+                                <option value="normal">Normal</option>
+                                <option value="high">High</option>
+                                <option value="urgent">Urgent</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="assignTaskBtn">
+                            <i class="fas fa-plus-circle"></i> Assign Task
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Member Management -->
                 <div class="backup-section">
                     <h3><i class="fas fa-users-cog"></i> Member Management</h3>
                     
@@ -315,22 +391,11 @@
                         <div id="membersList" class="members-list"></div>
                     </div>
                 </div>
-                
-                <div class="backup-section">
-                    <h3><i class="fas fa-upload"></i> Import Data</h3>
-                    <p>Select a JSON file to restore previous data:</p>
-                    <div class="file-input-wrapper">
-                        <i class="fas fa-file-import"></i> Choose File
-                        <input type="file" id="importFile" accept=".json">
-                    </div>
-                    <button class="btn btn-success" id="importDataBtn" style="margin-top: 16px;">
-                        <i class="fas fa-upload"></i> Import Data
-                    </button>
-                </div>
             </div>
         </div>
     </div>
 
+    <!-- JavaScript -->
     <script src="script.js"></script>
 </body>
 </html>
