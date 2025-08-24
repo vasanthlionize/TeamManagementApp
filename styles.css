@@ -1883,3 +1883,133 @@ body {
         gap: 8px;
     }
 }
+/* Enhanced Performance Summary Styles */
+.performance-member-card {
+    position: relative;
+    background: linear-gradient(135deg, #ffffff, #f8fafc);
+    border: 2px solid var(--gray-200);
+    transition: all 0.3s ease;
+}
+
+.performance-member-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
+}
+
+.performance-rank {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    z-index: 10;
+}
+
+.performance-rank.rank-1 {
+    background: linear-gradient(135deg, #ffd700, #ffed4e);
+    color: #000;
+    box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+}
+
+.performance-rank.rank-2 {
+    background: linear-gradient(135deg, #c0c0c0, #e5e7eb);
+    color: #000;
+    box-shadow: 0 4px 15px rgba(192, 192, 192, 0.3);
+}
+
+.performance-rank.rank-3 {
+    background: linear-gradient(135deg, #cd7f32, #d97706);
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(205, 127, 50, 0.3);
+}
+
+.performance-score {
+    font-size: 14px;
+    color: var(--primary);
+    font-weight: 600;
+    background: rgba(102, 126, 234, 0.1);
+    padding: 4px 8px;
+    border-radius: 12px;
+    margin-top: 4px;
+}
+
+.performance-stats {
+    margin-top: 16px;
+}
+
+.stat-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.stat-row:last-child {
+    margin-bottom: 0;
+}
+
+.stat-row .stat-item {
+    text-align: center;
+    padding: 12px 8px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    border: 1px solid var(--gray-200);
+}
+
+.stat-row .stat-item .stat-number {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--gray-900);
+    display: block;
+    line-height: 1;
+}
+
+.stat-row .stat-item .stat-label {
+    font-size: 11px;
+    color: var(--gray-600);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.performance-note {
+    font-style: italic;
+    border-left: 4px solid var(--info);
+}
+
+/* Info Light Color */
+:root {
+    --info-light: rgba(59, 130, 246, 0.1);
+}
+
+/* Responsive Performance Cards */
+@media (max-width: 768px) {
+    .performance-stats {
+        margin-top: 12px;
+    }
+    
+    .stat-row {
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    
+    .stat-row .stat-item {
+        padding: 8px 6px;
+    }
+    
+    .stat-row .stat-item .stat-number {
+        font-size: 1.1rem;
+    }
+    
+    .stat-row .stat-item .stat-label {
+        font-size: 10px;
+    }
+}
