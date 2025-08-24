@@ -1,688 +1,423 @@
-// Team Management System - Enhanced with sorting and member management
+// Firebase Configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBX4s8BSIYPlLfFSAu3KFT5u8tmHWA5cxo",
+  authDomain: "team-management-app-63275.firebaseapp.com",
+  databaseURL: "https://team-management-app-63275-default-rtdb.firebaseio.com",
+  projectId: "team-management-app-63275",
+  storageBucket: "team-management-app-63275.firebasestorage.app",
+  messagingSenderId: "513377063529",
+  appId: "1:513377063529:web:5fce8f99b6b48a816288f8"
+};
+
+// Enhanced Team Manager Class with Category PDF Support
 class TeamManager {
     constructor() {
-        this.members = this.loadMembers();
-        this.attendance = JSON.parse(localStorage.getItem('attendance')) || {};
-        this.tasks = JSON.parse(localStorage.getItem('tasks')) || {};
-        this.ideas = JSON.parse(localStorage.getItem('ideas')) || [];
-        this.isAdminLoggedIn = false;
-        this.adminPassword = 'admin123';
-        this.currentFilter = null;
-        
-        this.init();
-    }
-
-    loadMembers() {
-        const savedMembers = JSON.parse(localStorage.getItem('members'));
-        if (savedMembers && savedMembers.length > 0) {
-            return savedMembers;
-        }
-        return [
+        this.teamId = 'ai-t19';
+        this.members = [
             'Vasantha Kumar N', 'Dheeraj R', 'Gokul T', 'Siva Prasanth K',
             'Sanjay S', 'Rohith Vignesh N', 'Prabhu M', 'Prithivi Raj M',
             'Kamalesh R', 'Ashok Kumar S'
         ];
+        this.attendance = {};
+        this.tasks = {};
+        this.ideas = [];
+        this.assignedTasks = {};
+        this.currentSelectedMember = null;
+        this.isAdminLoggedIn = false;
+        this.adminPassword = 'admin123';
+        this.isOnline = false;
+        this.database = null;
+        
+        this.init();
     }
 
     init() {
-        this.setupEventListeners();
-        this.populateSelects();
-        this.setTodayDate();
-        this.updateAllDisplays();
-        this.setupSortControls();
+        console.log('🚀 Starting Enhanced Team Manager...');
+        this.updateConnectionStatus('🔄 Initializing Firebase...', 'connecting');
+        
+        this.initializeFirebase().then(() => {
+            this.setupEventListeners();
+            this.populateSelects();
+            this.setTodayDate();
+            this.loadLocalData();
+            this.updateAllDisplays();
+            this.updateConnectionStatus('✅ App Ready', 'online');
+            this.showMessage('✅ Team Management System Ready with Category Reports!', 'success');
+        }).catch(() => {
+            this.updateConnectionStatus('⚠️ Offline Mode', 'offline');
+            this.setupEventListeners();
+            this.populateSelects();
+            this.setTodayDate();
+            this.loadLocalData();
+            this.updateAllDisplays();
+            this.showMessage('⚠️ Working offline. Firebase not connected.', 'warning');
+        });
+    }
+
+    async initializeFirebase() {
+        try {
+            firebase.initializeApp(firebaseConfig);
+            this.database = firebase.database();
+            
+            return new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error('Timeout')), 10000);
+                
+                this.database.ref('.info/connected').on('value', (snapshot) => {
+                    clearTimeout(timeout);
+                    this.isOnline = snapshot.val();
+                    
+                    if (this.isOnline) {
+                        this.updateConnectionStatus('🟢 Online - Firebase Connected', 'online');
+                        this.setupFirebaseListeners();
+                        this.syncToFirebase();
+                    }
+                    resolve();
+                });
+            });
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    setupFirebaseListeners() {
+        if (!this.database) return;
+        
+        const teamRef = this.database.ref(`teams/${this.teamId}`);
+        
+        teamRef.child('tasks').on('value', (snapshot) => {
+            if (snapshot.exists()) {
+                this.tasks = snapshot.val();
+                if (this.currentSelectedMember) {
+                    this.displayMemberTasks(this.currentSelectedMember);
+                }
+                this.saveToLocalStorage();
+            }
+        });
+
+        teamRef.child('assignedTasks').on('value', (snapshot) => {
+            if (snapshot.exists()) {
+                this.assignedTasks = snapshot.val();
+                if (this.currentSelectedMember) {
+                    this.displayMemberTasks(this.currentSelectedMember);
+                }
+                this.saveToLocalStorage();
+            }
+        });
+
+        teamRef.child('attendance').on('value', (snapshot) => {
+            if (snapshot.exists()) {
+                this.attendance = snapshot.val();
+                this.updateAttendanceDisplay();
+                this.saveToLocalStorage();
+            }
+        });
+
+        teamRef.child('ideas').on('value', (snapshot) => {
+            if (snapshot.exists()) {
+                this.ideas = Object.values(snapshot.val() || {});
+                this.updateIdeasDisplay();
+                this.saveToLocalStorage();
+            }
+        });
     }
 
     setupEventListeners() {
-        // Tab navigation
+        console.log('🔧 Setting up enhanced event listeners...');
+        
+        // Tab Navigation
         document.querySelectorAll('.nav-tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
-                const targetTab = e.currentTarget.dataset.tab;
-                this.switchTab(targetTab);
+                this.switchTab(e.currentTarget.dataset.tab);
             });
         });
 
-        // Attendance functionality (removed mark all button)
-        document.getElementById('markAttendanceBtn').addEventListener('click', () => {
-            this.markAttendance();
+        // Task Management
+        const loadTasksBtn = document.getElementById('loadTasksBtn');
+        if (loadTasksBtn) {
+            loadTasksBtn.addEventListener('click', () => this.loadMemberTasks());
+        }
+
+        const addNewTaskBtn = document.getElementById('addNewTaskBtn');
+        if (addNewTaskBtn) {
+            addNewTaskBtn.addEventListener('click', () => this.addNewTask());
+        }
+
+        // Category Export Selection Change
+        const exportCategory = document.getElementById('exportCategory');
+        if (exportCategory) {
+            exportCategory.addEventListener('change', () => this.handleExportCategoryChange());
+        }
+
+        // Enhanced PDF Export
+        const exportCategoryPdfBtn = document.getElementById('exportCategoryPdfBtn');
+        if (exportCategoryPdfBtn) {
+            exportCategoryPdfBtn.addEventListener('click', () => this.exportCategoryPDF());
+        }
+
+        const previewReportBtn = document.getElementById('previewReportBtn');
+        if (previewReportBtn) {
+            previewReportBtn.addEventListener('click', () => this.previewReport());
+        }
+
+        // Main Functionality
+        const markAttendanceBtn = document.getElementById('markAttendanceBtn');
+        if (markAttendanceBtn) {
+            markAttendanceBtn.addEventListener('click', () => this.markAttendance());
+        }
+
+        const addIdeaBtn = document.getElementById('addIdeaBtn');
+        if (addIdeaBtn) {
+            addIdeaBtn.addEventListener('click', () => this.addIdea());
+        }
+
+        // Admin
+        const adminLoginBtn = document.getElementById('adminLoginBtn');
+        if (adminLoginBtn) {
+            adminLoginBtn.addEventListener('click', () => this.adminLogin());
+        }
+
+        const assignTaskBtn = document.getElementById('assignTaskBtn');
+        if (assignTaskBtn) {
+            assignTaskBtn.addEventListener('click', () => this.assignTask());
+        }
+
+        // Dynamic Events
+        document.addEventListener('click', (e) => {
+            if (e.target.id === 'exportDataBtn') this.exportData();
+            if (e.target.id === 'clearDataBtn') this.clearAllData();
+            if (e.target.id === 'logoutAdminBtn') this.logoutAdmin();
+            if (e.target.id === 'addMemberBtn') this.addMember();
+            if (e.target.classList.contains('delete-btn')) this.deleteIdea(e.target.dataset.id);
+            if (e.target.classList.contains('remove-member-btn')) this.removeMember(e.target.dataset.member);
+            if (e.target.classList.contains('update-status-btn')) this.updateTaskStatus(e.target.dataset.taskId, e.target.dataset.member);
         });
 
-        // Task functionality
-        document.getElementById('addTaskBtn').addEventListener('click', () => {
-            this.addTask();
-        });
-
-        // Ideas functionality
-        document.getElementById('addIdeaBtn').addEventListener('click', () => {
-            this.addIdea();
-        });
-
-        // Sort and filter controls
-        document.getElementById('filterAttendanceBtn').addEventListener('click', () => {
-            this.filterAttendance();
-        });
-
-        document.getElementById('sortTasksBtn').addEventListener('click', () => {
-            this.sortTasks();
-        });
-
-        document.getElementById('sortIdeasBtn').addEventListener('click', () => {
-            this.sortIdeas();
-        });
-
-        // PDF Export
-        document.getElementById('exportPdfBtn').addEventListener('click', () => {
-            this.exportToPDF();
-        });
-
-        // Radio button styling
+        // Radio buttons
         document.querySelectorAll('.radio-option').forEach(option => {
             option.addEventListener('click', () => {
                 const radio = option.querySelector('input[type="radio"]');
-                radio.checked = true;
-                this.updateRadioStyles();
+                if (radio) {
+                    radio.checked = true;
+                    this.updateRadioStyles();
+                }
             });
         });
 
-        // Admin functionality
-        document.getElementById('adminLoginBtn').addEventListener('click', () => {
-            this.adminLogin();
-        });
-
-        document.getElementById('adminPassword').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.adminLogin();
-            }
-        });
-
-        // Member management
-        document.getElementById('addMemberBtn').addEventListener('click', () => {
-            this.addMember();
-        });
-
-        document.getElementById('newMemberName').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.addMember();
-            }
-        });
-
-        // Admin panel buttons
-        document.addEventListener('click', (e) => {
-            if (e.target.id === 'exportDataBtn') this.exportData();
-            if (e.target.id === 'exportPdfAdminBtn') this.exportToPDF();
-            if (e.target.id === 'clearDataBtn') this.clearAllData();
-            if (e.target.id === 'resetAttendanceBtn') this.resetAttendance();
-            if (e.target.id === 'logoutAdminBtn') this.logoutAdmin();
-            if (e.target.id === 'importDataBtn') this.importData();
-            if (e.target.classList.contains('delete-btn')) this.deleteIdea(e.target.dataset.id);
-            if (e.target.classList.contains('remove-member-btn')) this.removeMember(e.target.dataset.member);
-        });
+        console.log('✅ Enhanced event listeners ready');
     }
 
-    setupSortControls() {
-        // Setup sort type change handlers
-        document.getElementById('sortType').addEventListener('change', (e) => {
-            this.handleSortTypeChange(e.target.value);
-        });
-
-        // Set current year for year selector
-        const currentYear = new Date().getFullYear();
-        document.getElementById('yearInput').value = currentYear;
-    }
-
-    handleSortTypeChange(sortType) {
-        const monthYearSelector = document.getElementById('monthYearSelector');
-        const yearSelector = document.getElementById('yearSelector');
+    // Handle Export Category Change
+    handleExportCategoryChange() {
+        const category = document.getElementById('exportCategory').value;
+        const memberSelectGroup = document.getElementById('memberSelectGroup');
         
-        monthYearSelector.style.display = 'none';
-        yearSelector.style.display = 'none';
-        
-        if (sortType === 'month') {
-            monthYearSelector.style.display = 'block';
-            const currentMonth = new Date().toISOString().substring(0, 7);
-            document.getElementById('monthYearInput').value = currentMonth;
-        } else if (sortType === 'year') {
-            yearSelector.style.display = 'block';
+        if (category === 'member-individual') {
+            memberSelectGroup.style.display = 'block';
+        } else {
+            memberSelectGroup.style.display = 'none';
         }
     }
 
-    switchTab(tabName) {
-        // Hide all tabs
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.remove('active');
-        });
-
-        // Remove active class from all nav tabs
-        document.querySelectorAll('.nav-tab').forEach(tab => {
-            tab.classList.remove('active');
-        });
-
-        // Show selected tab
-        document.getElementById(tabName).classList.add('active');
+    // Enhanced Category-wise PDF Export
+    async exportCategoryPDF() {
+        const category = document.getElementById('exportCategory').value;
+        const selectedMember = document.getElementById('individualMemberSelect').value;
         
-        // Add active class to selected nav tab
-        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-
-        // Update displays when switching tabs
-        this.updateAllDisplays();
-    }
-
-    populateSelects() {
-        const selects = ['attendanceMember', 'memberSelect', 'ideaMember'];
-        selects.forEach(selectId => {
-            const select = document.getElementById(selectId);
-            select.innerHTML = '<option value="">Select a member...</option>';
-            this.members.forEach(member => {
-                const option = document.createElement('option');
-                option.value = member;
-                option.textContent = member;
-                select.appendChild(option);
-            });
-        });
-    }
-
-    setTodayDate() {
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('sessionDate').value = today;
-    }
-
-    markAttendance() {
-        const date = document.getElementById('sessionDate').value;
-        const member = document.getElementById('attendanceMember').value;
-        const status = document.querySelector('input[name="attendanceStatus"]:checked')?.value;
-
-        if (!date || !member || !status) {
-            this.showMessage('Please fill all fields!', 'error');
+        if (category === 'member-individual' && !selectedMember) {
+            this.showMessage('Please select a member for individual report!', 'error');
             return;
         }
-
-        if (!this.attendance[date]) {
-            this.attendance[date] = {};
+        
+        try {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Generate report based on category
+            const reportData = this.generateReportData(category, selectedMember);
+            this.createPDFContent(doc, reportData);
+            
+            const fileName = `AI_T19_${reportData.fileName}_${new Date().toISOString().split('T')}.pdf`;
+            doc.save(fileName);
+            
+            this.showMessage(`✅ ${reportData.title} exported successfully!`, 'success');
+        } catch (error) {
+            console.error('PDF export error:', error);
+            this.showMessage('❌ PDF export failed. Please try again.', 'error');
         }
-
-        this.attendance[date][member] = status;
-        this.saveData();
-        this.updateAllDisplays();
-        this.showMessage(`Attendance marked: ${member} - ${status}`, 'success');
-
-        // Reset form
-        document.getElementById('attendanceMember').value = '';
-        document.querySelectorAll('input[name="attendanceStatus"]').forEach(radio => {
-            radio.checked = false;
-        });
-        this.updateRadioStyles();
     }
 
-    filterAttendance() {
-        const sortType = document.getElementById('sortType').value;
-        let filteredData = {};
-        let filterInfo = '';
+    // Generate Report Data Based on Category
+    generateReportData(category, selectedMember = null) {
+        const baseData = {
+            generatedDate: new Date().toLocaleDateString(),
+            totalMembers: this.members.length,
+            teamName: 'AI T19'
+        };
 
-        if (sortType === 'date') {
-            // Show all dates, sorted by date
-            const dates = Object.keys(this.attendance).sort();
-            dates.forEach(date => {
-                filteredData[date] = this.attendance[date];
-            });
-            filterInfo = 'Showing all attendance records sorted by date';
-        } else if (sortType === 'month') {
-            const selectedMonth = document.getElementById('monthYearInput').value;
-            if (!selectedMonth) {
-                this.showMessage('Please select a month!', 'error');
-                return;
-            }
+        switch(category) {
+            case 'attendance':
+                return {
+                    ...baseData,
+                    title: 'Attendance Report',
+                    fileName: 'Attendance_Report',
+                    type: 'attendance',
+                    data: this.getAttendanceData()
+                };
+                
+            case 'tasks':
+                return {
+                    ...baseData,
+                    title: 'Tasks Report', 
+                    fileName: 'Tasks_Report',
+                    type: 'tasks',
+                    data: this.getTasksData()
+                };
+                
+            case 'ideas':
+                return {
+                    ...baseData,
+                    title: 'Ideas Report',
+                    fileName: 'Ideas_Report', 
+                    type: 'ideas',
+                    data: this.getIdeasData()
+                };
+                
+            case 'performance':
+                return {
+                    ...baseData,
+                    title: 'Performance Analysis Report',
+                    fileName: 'Performance_Report',
+                    type: 'performance',
+                    data: this.getPerformanceData()
+                };
+                
+            case 'member-individual':
+                return {
+                    ...baseData,
+                    title: `Individual Report - ${selectedMember}`,
+                    fileName: `Individual_${selectedMember.replace(/\s+/g, '_')}`,
+                    type: 'individual',
+                    selectedMember: selectedMember,
+                    data: this.getIndividualMemberData(selectedMember)
+                };
+                
+            default: // 'all'
+                return {
+                    ...baseData,
+                    title: 'Complete Team Report',
+                    fileName: 'Complete_Report',
+                    type: 'complete',
+                    data: this.getCompleteData()
+                };
+        }
+    }
+
+    // Data Collection Methods
+    getAttendanceData() {
+        const attendanceDates = Object.keys(this.attendance).sort();
+        const summary = {};
+        let totalPresentDays = 0;
+        let totalDays = attendanceDates.length * this.members.length;
+        
+        attendanceDates.forEach(date => {
+            const dayAttendance = this.attendance[date];
+            const presentCount = Object.values(dayAttendance).filter(status => status === 'present').length;
+            const rate = Math.round((presentCount / this.members.length) * 100);
             
-            Object.keys(this.attendance).forEach(date => {
-                if (date.startsWith(selectedMonth)) {
-                    filteredData[date] = this.attendance[date];
+            summary[date] = {
+                present: presentCount,
+                absent: Object.values(dayAttendance).filter(status => status === 'absent').length,
+                rate: rate
+            };
+            totalPresentDays += presentCount;
+        });
+        
+        return {
+            dailySummary: summary,
+            overallRate: totalDays > 0 ? Math.round((totalPresentDays / totalDays) * 100) : 0,
+            totalActiveDays: attendanceDates.length,
+            memberWiseStats: this.getMemberWiseAttendance()
+        };
+    }
+
+    getMemberWiseAttendance() {
+        const memberStats = {};
+        this.members.forEach(member => {
+            let presentCount = 0;
+            let totalDays = 0;
+            
+            Object.values(this.attendance).forEach(dayAttendance => {
+                if (dayAttendance[member]) {
+                    totalDays++;
+                    if (dayAttendance[member] === 'present') presentCount++;
                 }
             });
             
-            const monthName = new Date(selectedMonth + '-01').toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'long' 
-            });
-            filterInfo = `Showing attendance records for ${monthName}`;
-        } else if (sortType === 'year') {
-            const selectedYear = document.getElementById('yearInput').value;
-            if (!selectedYear) {
-                this.showMessage('Please select a year!', 'error');
-                return;
-            }
-            
-            Object.keys(this.attendance).forEach(date => {
-                if (date.startsWith(selectedYear)) {
-                    filteredData[date] = this.attendance[date];
-                }
-            });
-            
-            filterInfo = `Showing attendance records for ${selectedYear}`;
-        }
-
-        this.currentFilter = { type: sortType, data: filteredData, info: filterInfo };
-        this.updateAttendanceDisplay();
+            memberStats[member] = {
+                present: presentCount,
+                total: totalDays,
+                rate: totalDays > 0 ? Math.round((presentCount / totalDays) * 100) : 0
+            };
+        });
+        
+        return memberStats;
     }
 
-    sortTasks() {
-        const sortType = document.getElementById('taskSortType').value;
-        this.updateTasksDisplay(sortType);
-    }
-
-    sortIdeas() {
-        const sortType = document.getElementById('ideaSortType').value;
-        this.updateIdeasDisplay(sortType);
-    }
-
-    addTask() {
-        const member = document.getElementById('memberSelect').value;
-        const description = document.getElementById('taskDescription').value;
-
-        if (!member || !description.trim()) {
-            this.showMessage('Please select member and add task description!', 'error');
-            return;
-        }
-
-        const taskId = Date.now().toString();
-        const task = {
-            id: taskId,
-            member: member,
-            description: description.trim(),
-            date: new Date().toLocaleDateString(),
-            timestamp: new Date().toISOString()
+    getTasksData() {
+        const regularTasks = Object.values(this.tasks).reduce((total, memberTasks) => total + memberTasks.length, 0);
+        const assignedTasks = Object.values(this.assignedTasks).reduce((total, memberTasks) => total + memberTasks.length, 0);
+        const completedAssigned = Object.values(this.assignedTasks).reduce((total, memberTasks) => 
+            total + memberTasks.filter(task => task.status === 'completed').length, 0);
+        
+        return {
+            totalRegular: regularTasks,
+            totalAssigned: assignedTasks,
+            completedAssigned: completedAssigned,
+            memberWiseTasks: this.getMemberWiseTaskData()
         };
-
-        if (!this.tasks[member]) {
-            this.tasks[member] = [];
-        }
-
-        this.tasks[member].unshift(task);
-        this.saveData();
-        this.updateTasksDisplay();
-        this.updateOverviewStats();
-        this.showMessage('Task added successfully!', 'success');
-
-        // Reset form
-        document.getElementById('memberSelect').value = '';
-        document.getElementById('taskDescription').value = '';
     }
 
-    addIdea() {
-        const member = document.getElementById('ideaMember').value;
-        const content = document.getElementById('ideaContent').value;
+    getMemberWiseTaskData() {
+        const memberData = {};
+        this.members.forEach(member => {
+            const regularTasks = this.tasks[member] || [];
+            const assignedTasks = this.assignedTasks[member] || [];
+            const completedAssigned = assignedTasks.filter(task => task.status === 'completed').length;
+            
+            memberData[member] = {
+                regular: regularTasks.length,
+                assigned: assignedTasks.length,
+                completed: completedAssigned,
+                recentTasks: regularTasks.slice(0, 5) // Last 5 tasks
+            };
+        });
+        
+        return memberData;
+    }
 
-        if (!member || !content.trim()) {
-            this.showMessage('Please select your name and add idea content!', 'error');
-            return;
-        }
-
-        const idea = {
-            id: Date.now().toString(),
-            member: member,
-            content: content.trim(),
-            date: new Date().toLocaleDateString(),
-            timestamp: new Date().toISOString()
+    getIdeasData() {
+        const memberWiseIdeas = {};
+        this.members.forEach(member => {
+            const memberIdeas = this.ideas.filter(idea => idea.member === member);
+            memberWiseIdeas[member] = {
+                count: memberIdeas.length,
+                ideas: memberIdeas.slice(0, 3) // Top 3 recent ideas
+            };
+        });
+        
+        return {
+            totalIdeas: this.ideas.length,
+            memberWiseIdeas: memberWiseIdeas,
+            recentIdeas: this.ideas.slice(0, 10)
         };
-
-        this.ideas.unshift(idea);
-        this.saveData();
-        this.updateIdeasDisplay();
-        this.updateOverviewStats();
-        this.showMessage('Idea shared successfully!', 'success');
-
-        // Reset form
-        document.getElementById('ideaMember').value = '';
-        document.getElementById('ideaContent').value = '';
     }
 
-    deleteIdea(ideaId) {
-        if (confirm('Are you sure you want to delete this idea?')) {
-            this.ideas = this.ideas.filter(idea => idea.id !== ideaId);
-            this.saveData();
-            this.updateIdeasDisplay();
-            this.updateOverviewStats();
-            this.showMessage('Idea deleted successfully!', 'success');
-        }
-    }
-
-    // Member Management Functions
-    addMember() {
-        const memberName = document.getElementById('newMemberName').value.trim();
-        
-        if (!memberName) {
-            this.showMessage('Please enter a member name!', 'error');
-            return;
-        }
-
-        if (this.members.includes(memberName)) {
-            this.showMessage('Member already exists!', 'error');
-            return;
-        }
-
-        this.members.push(memberName);
-        this.saveData();
-        this.populateSelects();
-        this.updateMembersList();
-        this.updateAllDisplays();
-        
-        document.getElementById('newMemberName').value = '';
-        this.showMessage(`Member "${memberName}" added successfully!`, 'success');
-    }
-
-    removeMember(memberName) {
-        if (confirm(`Are you sure you want to remove "${memberName}" from the team? This will also remove all their data.`)) {
-            // Remove member from list
-            this.members = this.members.filter(member => member !== memberName);
-            
-            // Remove member's tasks
-            delete this.tasks[memberName];
-            
-            // Remove member's ideas
-            this.ideas = this.ideas.filter(idea => idea.member !== memberName);
-            
-            // Remove member from attendance records
-            Object.keys(this.attendance).forEach(date => {
-                delete this.attendance[date][memberName];
-            });
-            
-            this.saveData();
-            this.populateSelects();
-            this.updateMembersList();
-            this.updateAllDisplays();
-            this.showMessage(`Member "${memberName}" removed successfully!`, 'success');
-        }
-    }
-
-    updateMembersList() {
-        const membersList = document.querySelector('#admin .members-list');
-        if (!membersList) return;
-        
-        membersList.innerHTML = '';
-        
-        this.members.forEach(member => {
-            const memberItem = document.createElement('div');
-            memberItem.className = 'member-item';
-            memberItem.innerHTML = `
-                <span class="member-name">${member}</span>
-                <button class="remove-member-btn" data-member="${member}" title="Remove ${member}">
-                    <i class="fas fa-times"></i>
-                </button>
-            `;
-            membersList.appendChild(memberItem);
-        });
-    }
-
-    updateAllDisplays() {
-        this.updateAttendanceDisplay();
-        this.updateTasksDisplay();
-        this.updateIdeasDisplay();
-        this.updateOverviewStats();
-        this.updateMembersList();
-    }
-
-    updateAttendanceDisplay() {
-        const date = document.getElementById('sessionDate').value;
-        let displayData = {};
-        let showFilterInfo = false;
-
-        if (this.currentFilter) {
-            displayData = this.currentFilter.data;
-            showFilterInfo = true;
-        } else {
-            displayData[date] = this.attendance[date] || {};
-        }
-
-        const membersList = document.getElementById('membersList');
-        membersList.innerHTML = '';
-
-        if (showFilterInfo) {
-            const filterInfo = document.createElement('div');
-            filterInfo.className = 'filter-info';
-            filterInfo.innerHTML = `<i class="fas fa-info-circle"></i> ${this.currentFilter.info}`;
-            membersList.appendChild(filterInfo);
-        }
-
-        // Calculate stats for current date view
-        const dailyAttendance = this.attendance[date] || {};
-        let presentCount = 0;
-        let absentCount = 0;
-        let notMarkedCount = 0;
-
-        this.members.forEach(member => {
-            const status = dailyAttendance[member] || 'not-marked';
-            if (status === 'present') presentCount++;
-            else if (status === 'absent') absentCount++;
-            else notMarkedCount++;
-        });
-
-        // Update stats
-        document.getElementById('presentCount').textContent = presentCount;
-        document.getElementById('absentCount').textContent = absentCount;
-        document.getElementById('notMarkedCount').textContent = notMarkedCount;
-        
-        const attendanceRate = this.members.length > 0 ? 
-            Math.round((presentCount / this.members.length) * 100) : 0;
-        document.getElementById('attendanceRate').textContent = attendanceRate + '%';
-
-        // Display attendance records
-        const sortedDates = Object.keys(displayData).sort().reverse();
-        
-        sortedDates.forEach(displayDate => {
-            const dateGroup = document.createElement('div');
-            dateGroup.className = 'attendance-date-group';
-            
-            const dateAttendance = displayData[displayDate];
-            const dayPresent = Object.values(dateAttendance).filter(s => s === 'present').length;
-            const dayAbsent = Object.values(dateAttendance).filter(s => s === 'absent').length;
-            const dayTotal = Object.keys(dateAttendance).length;
-            const dayRate = dayTotal > 0 ? Math.round((dayPresent / this.members.length) * 100) : 0;
-            
-            dateGroup.innerHTML = `
-                <div class="date-header">
-                    <span><i class="fas fa-calendar-day"></i> ${new Date(displayDate).toLocaleDateString('en-US', { 
-                        weekday: 'long', 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                    })}</span>
-                    <span class="date-stats">
-                        Present: ${dayPresent} | Absent: ${dayAbsent} | Rate: ${dayRate}%
-                    </span>
-                </div>
-                <div class="members-grid" style="padding: 24px;">
-                    ${this.members.map(member => {
-                        const status = dateAttendance[member] || 'not-marked';
-                        return `
-                            <div class="member-card ${status}">
-                                <div class="member-header">
-                                    <div class="member-name">${member}</div>
-                                    <div class="status-badge status-${status}">
-                                        <i class="fas fa-${status === 'present' ? 'check' : status === 'absent' ? 'times' : 'clock'}"></i>
-                                        ${status === 'not-marked' ? 'Not Marked' : status.charAt(0).toUpperCase() + status.slice(1)}
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            `;
-            
-            membersList.appendChild(dateGroup);
-        });
-
-        if (sortedDates.length === 0) {
-            membersList.innerHTML += `
-                <div style="text-align: center; padding: 40px; color: var(--gray-500);">
-                    <i class="fas fa-calendar-times" style="font-size: 3rem; margin-bottom: 16px; opacity: 0.3;"></i>
-                    <p>No attendance records found for the selected period.</p>
-                </div>
-            `;
-        }
-    }
-
-    updateTasksDisplay(sortType = 'newest') {
-        const tasksDisplay = document.getElementById('tasksDisplay');
-        tasksDisplay.innerHTML = '';
-
-        let allTasks = [];
-        
-        // Collect all tasks
-        Object.keys(this.tasks).forEach(member => {
-            this.tasks[member].forEach(task => {
-                allTasks.push({ ...task, member });
-            });
-        });
-
-        // Sort tasks based on type
-        switch (sortType) {
-            case 'newest':
-                allTasks.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                break;
-            case 'oldest':
-                allTasks.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                break;
-            case 'member':
-                allTasks.sort((a, b) => a.member.localeCompare(b.member));
-                break;
-        }
-
-        if (sortType === 'member') {
-            // Group by member
-            this.members.forEach(member => {
-                const memberTasks = allTasks.filter(task => task.member === member);
-                if (memberTasks.length === 0) return;
-
-                const memberCard = document.createElement('div');
-                memberCard.className = 'member-card';
-                
-                const tasksHTML = memberTasks.map(task => `
-                    <div class="task-item">
-                        <strong>${task.date}:</strong> ${task.description}
-                    </div>
-                `).join('');
-
-                memberCard.innerHTML = `
-                    <div class="member-header">
-                        <div class="member-name">${member}</div>
-                        <div class="status-badge" style="background: var(--info);">
-                            ${memberTasks.length} Tasks
-                        </div>
-                    </div>
-                    <div class="task-list">${tasksHTML}</div>
-                `;
-                
-                tasksDisplay.appendChild(memberCard);
-            });
-        } else {
-            // Show all tasks in chronological order
-            const tasksList = document.createElement('div');
-            tasksList.style.cssText = 'display: grid; gap: 16px;';
-            
-            allTasks.forEach(task => {
-                const taskCard = document.createElement('div');
-                taskCard.className = 'member-card';
-                taskCard.innerHTML = `
-                    <div class="member-header">
-                        <div class="member-name">${task.member}</div>
-                        <div class="status-badge" style="background: var(--success);">
-                            ${task.date}
-                        </div>
-                    </div>
-                    <div class="task-item" style="margin-top: 16px;">
-                        ${task.description}
-                    </div>
-                `;
-                tasksList.appendChild(taskCard);
-            });
-            
-            tasksDisplay.appendChild(tasksList);
-        }
-
-        if (allTasks.length === 0) {
-            tasksDisplay.innerHTML = `
-                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--gray-500);">
-                    <i class="fas fa-tasks" style="font-size: 3rem; margin-bottom: 16px; opacity: 0.3;"></i>
-                    <p>No tasks recorded yet. Start adding completed tasks!</p>
-                </div>
-            `;
-        }
-    }
-
-    updateIdeasDisplay(sortType = 'newest') {
-        const ideasBoard = document.getElementById('ideasBoard');
-        ideasBoard.innerHTML = '';
-
-        if (this.ideas.length === 0) {
-            ideasBoard.innerHTML = `
-                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--gray-500);">
-                    <i class="fas fa-lightbulb" style="font-size: 3rem; margin-bottom: 16px; opacity: 0.3;"></i>
-                    <p>No ideas shared yet. Be the first to share your innovative thoughts!</p>
-                </div>
-            `;
-            return;
-        }
-
-        let sortedIdeas = [...this.ideas];
-
-        // Sort ideas based on type
-        switch (sortType) {
-            case 'newest':
-                sortedIdeas.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                break;
-            case 'oldest':
-                sortedIdeas.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                break;
-            case 'member':
-                sortedIdeas.sort((a, b) => a.member.localeCompare(b.member));
-                break;
-        }
-
-        sortedIdeas.forEach(idea => {
-            const ideaCard = document.createElement('div');
-            ideaCard.className = 'idea-card';
-            ideaCard.innerHTML = `
-                <button class="delete-btn" data-id="${idea.id}">
-                    <i class="fas fa-times"></i>
-                </button>
-                <div class="idea-author">${idea.member} - ${idea.date}</div>
-                <div class="idea-content">${idea.content}</div>
-            `;
-            ideasBoard.appendChild(ideaCard);
-        });
-    }
-
-    updateOverviewStats() {
-        const totalTasks = Object.values(this.tasks).reduce((total, memberTasks) => 
-            total + memberTasks.length, 0);
-        
-        const totalIdeas = this.ideas.length;
-        
-        const attendanceDates = Object.keys(this.attendance);
-        const activeDays = attendanceDates.length;
-        
-        let totalAttendanceRate = 0;
-        if (attendanceDates.length > 0) {
-            const rates = attendanceDates.map(date => {
-                const dayAttendance = this.attendance[date];
-                const presentCount = Object.values(dayAttendance).filter(status => status === 'present').length;
-                return (presentCount / this.members.length) * 100;
-            });
-            totalAttendanceRate = Math.round(rates.reduce((sum, rate) => sum + rate, 0) / rates.length);
-        }
-
-        document.getElementById('totalTasks').textContent = totalTasks;
-        document.getElementById('totalIdeas').textContent = totalIdeas;
-        document.getElementById('avgAttendance').textContent = totalAttendanceRate + '%';
-        document.getElementById('activeDays').textContent = activeDays;
-
-        this.updatePerformanceSummary();
-    }
-
-    updatePerformanceSummary() {
-        const performanceSummary = document.getElementById('performanceSummary');
-        
-        // Calculate member statistics
+    getPerformanceData() {
         const memberStats = this.members.map(member => {
             const taskCount = this.tasks[member] ? this.tasks[member].length : 0;
             const ideaCount = this.ideas.filter(idea => idea.member === member).length;
+            const assignedTasks = this.assignedTasks[member] || [];
+            const completedAssigned = assignedTasks.filter(task => task.status === 'completed').length;
             
             let attendanceCount = 0;
             Object.values(this.attendance).forEach(dayAttendance => {
@@ -696,17 +431,941 @@ class TeamManager {
                 name: member,
                 tasks: taskCount,
                 ideas: ideaCount,
+                assignedCompleted: completedAssigned,
                 attendanceRate: Math.round(attendanceRate),
-                totalScore: taskCount + ideaCount + (attendanceRate / 10)
+                totalScore: taskCount + ideaCount + (attendanceRate / 10) + completedAssigned * 2
+            };
+        });
+
+        return {
+            rankings: memberStats.sort((a, b) => b.totalScore - a.totalScore),
+            teamAverages: {
+                avgTasks: Math.round(memberStats.reduce((sum, m) => sum + m.tasks, 0) / memberStats.length),
+                avgIdeas: Math.round(memberStats.reduce((sum, m) => sum + m.ideas, 0) / memberStats.length),
+                avgAttendance: Math.round(memberStats.reduce((sum, m) => sum + m.attendanceRate, 0) / memberStats.length)
+            }
+        };
+    }
+
+    getIndividualMemberData(memberName) {
+        const memberTasks = this.tasks[memberName] || [];
+        const memberIdeas = this.ideas.filter(idea => idea.member === memberName);
+        const memberAssigned = this.assignedTasks[memberName] || [];
+        
+        let attendanceCount = 0;
+        const attendanceDetails = {};
+        Object.keys(this.attendance).forEach(date => {
+            const status = this.attendance[date][memberName] || 'not-marked';
+            attendanceDetails[date] = status;
+            if (status === 'present') attendanceCount++;
+        });
+        
+        const totalDays = Object.keys(this.attendance).length;
+        
+        return {
+            tasks: memberTasks,
+            ideas: memberIdeas,
+            assignedTasks: memberAssigned,
+            attendanceDetails: attendanceDetails,
+            summary: {
+                totalTasks: memberTasks.length,
+                totalIdeas: memberIdeas.length,
+                totalAssigned: memberAssigned.length,
+                completedAssigned: memberAssigned.filter(task => task.status === 'completed').length,
+                attendanceRate: totalDays > 0 ? Math.round((attendanceCount / totalDays) * 100) : 0
+            }
+        };
+    }
+
+    getCompleteData() {
+        return {
+            attendance: this.getAttendanceData(),
+            tasks: this.getTasksData(),
+            ideas: this.getIdeasData(),
+            performance: this.getPerformanceData()
+        };
+    }
+
+    // PDF Content Creation
+    createPDFContent(doc, reportData) {
+        // Header
+        doc.setFontSize(20);
+        doc.text(reportData.title, 20, 20);
+        
+        doc.setFontSize(12);
+        doc.text(`Team: ${reportData.teamName}`, 20, 35);
+        doc.text(`Generated: ${reportData.generatedDate}`, 20, 45);
+        doc.text(`Total Members: ${reportData.totalMembers}`, 20, 55);
+        
+        let yPos = 70;
+        
+        // Content based on report type
+        switch(reportData.type) {
+            case 'attendance':
+                yPos = this.addAttendanceContentToPDF(doc, reportData.data, yPos);
+                break;
+            case 'tasks':
+                yPos = this.addTasksContentToPDF(doc, reportData.data, yPos);
+                break;
+            case 'ideas':
+                yPos = this.addIdeasContentToPDF(doc, reportData.data, yPos);
+                break;
+            case 'performance':
+                yPos = this.addPerformanceContentToPDF(doc, reportData.data, yPos);
+                break;
+            case 'individual':
+                yPos = this.addIndividualContentToPDF(doc, reportData.data, reportData.selectedMember, yPos);
+                break;
+            case 'complete':
+                yPos = this.addCompleteContentToPDF(doc, reportData.data, yPos);
+                break;
+        }
+    }
+
+    addAttendanceContentToPDF(doc, data, yPos) {
+        doc.setFontSize(16);
+        doc.text('Attendance Summary', 20, yPos);
+        yPos += 15;
+        
+        doc.setFontSize(12);
+        doc.text(`Overall Attendance Rate: ${data.overallRate}%`, 20, yPos);
+        yPos += 8;
+        doc.text(`Total Active Days: ${data.totalActiveDays}`, 20, yPos);
+        yPos += 15;
+        
+        // Member-wise stats
+        doc.setFontSize(14);
+        doc.text('Member-wise Attendance:', 20, yPos);
+        yPos += 10;
+        
+        doc.setFontSize(10);
+        Object.keys(data.memberWiseStats).forEach(member => {
+            if (yPos > 270) {
+                doc.addPage();
+                yPos = 20;
+            }
+            const stats = data.memberWiseStats[member];
+            doc.text(`${member}: ${stats.present}/${stats.total} days (${stats.rate}%)`, 25, yPos);
+            yPos += 6;
+        });
+        
+        return yPos + 10;
+    }
+
+    addTasksContentToPDF(doc, data, yPos) {
+        doc.setFontSize(16);
+        doc.text('Tasks Summary', 20, yPos);
+        yPos += 15;
+        
+        doc.setFontSize(12);
+        doc.text(`Total Regular Tasks: ${data.totalRegular}`, 20, yPos);
+        yPos += 8;
+        doc.text(`Total Assigned Tasks: ${data.totalAssigned}`, 20, yPos);
+        yPos += 8;
+        doc.text(`Completed Assigned Tasks: ${data.completedAssigned}`, 20, yPos);
+        yPos += 15;
+        
+        // Member-wise tasks
+        doc.setFontSize(14);
+        doc.text('Member-wise Task Summary:', 20, yPos);
+        yPos += 10;
+        
+        doc.setFontSize(10);
+        Object.keys(data.memberWiseTasks).forEach(member => {
+            if (yPos > 270) {
+                doc.addPage();
+                yPos = 20;
+            }
+            const tasks = data.memberWiseTasks[member];
+            doc.text(`${member}:`, 25, yPos);
+            yPos += 6;
+            doc.text(`  Regular: ${tasks.regular} | Assigned: ${tasks.completed}/${tasks.assigned}`, 30, yPos);
+            yPos += 8;
+        });
+        
+        return yPos + 10;
+    }
+
+    addIdeasContentToPDF(doc, data, yPos) {
+        doc.setFontSize(16);
+        doc.text('Ideas Summary', 20, yPos);
+        yPos += 15;
+        
+        doc.setFontSize(12);
+        doc.text(`Total Ideas Shared: ${data.totalIdeas}`, 20, yPos);
+        yPos += 15;
+        
+        // Member-wise ideas
+        doc.setFontSize(14);
+        doc.text('Member-wise Ideas:', 20, yPos);
+        yPos += 10;
+        
+        doc.setFontSize(10);
+        Object.keys(data.memberWiseIdeas).forEach(member => {
+            if (yPos > 270) {
+                doc.addPage();
+                yPos = 20;
+            }
+            const memberData = data.memberWiseIdeas[member];
+            doc.text(`${member}: ${memberData.count} ideas`, 25, yPos);
+            yPos += 8;
+        });
+        
+        return yPos + 10;
+    }
+
+    addPerformanceContentToPDF(doc, data, yPos) {
+        doc.setFontSize(16);
+        doc.text('Performance Analysis', 20, yPos);
+        yPos += 15;
+        
+        doc.setFontSize(12);
+        doc.text('Team Rankings:', 20, yPos);
+        yPos += 10;
+        
+        doc.setFontSize(10);
+        data.rankings.slice(0, 10).forEach((member, index) => {
+            if (yPos > 270) {
+                doc.addPage();
+                yPos = 20;
+            }
+            doc.text(`${index + 1}. ${member.name} - Score: ${Math.round(member.totalScore)}`, 25, yPos);
+            yPos += 6;
+            doc.text(`   Tasks: ${member.tasks} | Ideas: ${member.ideas} | Attendance: ${member.attendanceRate}%`, 30, yPos);
+            yPos += 8;
+        });
+        
+        return yPos + 10;
+    }
+
+    addIndividualContentToPDF(doc, data, memberName, yPos) {
+        doc.setFontSize(16);
+        doc.text(`Individual Report: ${memberName}`, 20, yPos);
+        yPos += 15;
+        
+        doc.setFontSize(14);
+        doc.text('Summary:', 20, yPos);
+        yPos += 10;
+        
+        doc.setFontSize(12);
+        doc.text(`Regular Tasks: ${data.summary.totalTasks}`, 25, yPos);
+        yPos += 8;
+        doc.text(`Ideas Shared: ${data.summary.totalIdeas}`, 25, yPos);
+        yPos += 8;
+        doc.text(`Assigned Tasks: ${data.summary.completedAssigned}/${data.summary.totalAssigned}`, 25, yPos);
+        yPos += 8;
+        doc.text(`Attendance Rate: ${data.summary.attendanceRate}%`, 25, yPos);
+        yPos += 15;
+        
+        // Recent tasks
+        if (data.tasks.length > 0) {
+            doc.setFontSize(14);
+            doc.text('Recent Tasks:', 20, yPos);
+            yPos += 10;
+            
+            doc.setFontSize(10);
+            data.tasks.slice(0, 10).forEach(task => {
+                if (yPos > 270) {
+                    doc.addPage();
+                    yPos = 20;
+                }
+                doc.text(`• ${task.date}: ${task.description.substring(0, 60)}...`, 25, yPos);
+                yPos += 6;
+            });
+        }
+        
+        return yPos + 10;
+    }
+
+    addCompleteContentToPDF(doc, data, yPos) {
+        // Add summary from each category
+        yPos = this.addAttendanceContentToPDF(doc, data.attendance, yPos);
+        yPos = this.addTasksContentToPDF(doc, data.tasks, yPos);
+        yPos = this.addIdeasContentToPDF(doc, data.ideas, yPos);
+        yPos = this.addPerformanceContentToPDF(doc, data.performance, yPos);
+        
+        return yPos;
+    }
+
+    // Preview Report
+    previewReport() {
+        const category = document.getElementById('exportCategory').value;
+        const selectedMember = document.getElementById('individualMemberSelect').value;
+        
+        if (category === 'member-individual' && !selectedMember) {
+            this.showMessage('Please select a member for individual report preview!', 'error');
+            return;
+        }
+        
+        const reportData = this.generateReportData(category, selectedMember);
+        this.displayReportPreview(reportData);
+    }
+
+    displayReportPreview(reportData) {
+        const previewSection = document.getElementById('reportPreview');
+        const previewContent = document.getElementById('reportPreviewContent');
+        
+        let html = `
+            <div class="report-header">
+                <h4>${reportData.title}</h4>
+                <p><strong>Generated:</strong> ${reportData.generatedDate}</p>
+                <p><strong>Team:</strong> ${reportData.teamName} (${reportData.totalMembers} members)</p>
+            </div>
+        `;
+        
+        // Add content preview based on type
+        switch(reportData.type) {
+            case 'attendance':
+                html += this.generateAttendancePreview(reportData.data);
+                break;
+            case 'tasks':
+                html += this.generateTasksPreview(reportData.data);
+                break;
+            case 'ideas':
+                html += this.generateIdeasPreview(reportData.data);
+                break;
+            case 'performance':
+                html += this.generatePerformancePreview(reportData.data);
+                break;
+            case 'individual':
+                html += this.generateIndividualPreview(reportData.data, reportData.selectedMember);
+                break;
+            case 'complete':
+                html += this.generateCompletePreview(reportData.data);
+                break;
+        }
+        
+        previewContent.innerHTML = html;
+        previewSection.style.display = 'block';
+        
+        // Scroll to preview
+        previewSection.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    generateAttendancePreview(data) {
+        return `
+            <div class="preview-section">
+                <h5>📊 Attendance Overview</h5>
+                <p><strong>Overall Rate:</strong> ${data.overallRate}%</p>
+                <p><strong>Active Days:</strong> ${data.totalActiveDays}</p>
+                <div class="member-stats">
+                    <h6>Top Performers:</h6>
+                    ${Object.entries(data.memberWiseStats)
+                        .sort(([,a], [,b]) => b.rate - a.rate)
+                        .slice(0, 5)
+                        .map(([member, stats]) => `<p>${member}: ${stats.rate}%</p>`)
+                        .join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    generateTasksPreview(data) {
+        return `
+            <div class="preview-section">
+                <h5>📋 Tasks Overview</h5>
+                <p><strong>Regular Tasks:</strong> ${data.totalRegular}</p>
+                <p><strong>Assigned Tasks:</strong> ${data.completedAssigned}/${data.totalAssigned}</p>
+                <div class="member-stats">
+                    <h6>Most Active Members:</h6>
+                    ${Object.entries(data.memberWiseTasks)
+                        .sort(([,a], [,b]) => (b.regular + b.completed) - (a.regular + a.completed))
+                        .slice(0, 5)
+                        .map(([member, tasks]) => `<p>${member}: ${tasks.regular + tasks.completed} total</p>`)
+                        .join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    generateIdeasPreview(data) {
+        return `
+            <div class="preview-section">
+                <h5>💡 Ideas Overview</h5>
+                <p><strong>Total Ideas:</strong> ${data.totalIdeas}</p>
+                <div class="member-stats">
+                    <h6>Top Contributors:</h6>
+                    ${Object.entries(data.memberWiseIdeas)
+                        .sort(([,a], [,b]) => b.count - a.count)
+                        .slice(0, 5)
+                        .map(([member, ideas]) => `<p>${member}: ${ideas.count} ideas</p>`)
+                        .join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    generatePerformancePreview(data) {
+        return `
+            <div class="preview-section">
+                <h5>🏆 Performance Overview</h5>
+                <div class="rankings">
+                    <h6>Top 5 Performers:</h6>
+                    ${data.rankings.slice(0, 5).map((member, index) => `
+                        <div class="rank-item">
+                            <strong>${index + 1}. ${member.name}</strong>
+                            <span>Score: ${Math.round(member.totalScore)}</span>
+                            <small>Tasks: ${member.tasks} | Ideas: ${member.ideas} | Attendance: ${member.attendanceRate}%</small>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    generateIndividualPreview(data, memberName) {
+        return `
+            <div class="preview-section">
+                <h5>👤 Individual Report: ${memberName}</h5>
+                <div class="individual-stats">
+                    <p><strong>Regular Tasks:</strong> ${data.summary.totalTasks}</p>
+                    <p><strong>Ideas Shared:</strong> ${data.summary.totalIdeas}</p>
+                    <p><strong>Assigned Tasks:</strong> ${data.summary.completedAssigned}/${data.summary.totalAssigned}</p>
+                    <p><strong>Attendance Rate:</strong> ${data.summary.attendanceRate}%</p>
+                </div>
+            </div>
+        `;
+    }
+
+    generateCompletePreview(data) {
+        return `
+            <div class="preview-section">
+                <h5>📊 Complete Report Preview</h5>
+                <p>This report includes:</p>
+                <ul>
+                    <li>📊 Attendance Analysis (${data.attendance.overallRate}% overall rate)</li>
+                    <li>📋 Tasks Summary (${data.tasks.totalRegular + data.tasks.totalAssigned} total tasks)</li>
+                    <li>💡 Ideas Collection (${data.ideas.totalIdeas} ideas)</li>
+                    <li>🏆 Performance Rankings (${data.performance.rankings.length} members)</li>
+                </ul>
+            </div>
+        `;
+    }
+
+    // [Include all other existing methods from previous version...]
+    // Task Management, Attendance, Ideas, Admin functions, etc.
+
+    // Simplified Task Loading
+    loadMemberTasks() {
+        const selectedMember = document.getElementById('taskMemberSelect').value;
+        if (!selectedMember) {
+            this.showMessage('Please select a member!', 'error');
+            return;
+        }
+
+        this.currentSelectedMember = selectedMember;
+        this.displayMemberTasks(selectedMember);
+        this.showMessage(`✅ Loaded tasks for ${selectedMember}`, 'success');
+    }
+
+    displayMemberTasks(memberName) {
+        const dashboard = document.getElementById('taskDashboard');
+        const memberNameDisplay = document.getElementById('selectedMemberName');
+        
+        dashboard.style.display = 'block';
+        memberNameDisplay.textContent = memberName;
+        
+        const memberTasks = this.tasks[memberName] || [];
+        const assignedTasks = this.assignedTasks[memberName] || [];
+        
+        const completedAssigned = assignedTasks.filter(task => task.status === 'completed').length;
+        const pendingAssigned = assignedTasks.filter(task => task.status !== 'completed').length;
+        
+        document.getElementById('memberTaskCount').textContent = memberTasks.length + assignedTasks.length;
+        document.getElementById('memberCompletedTasks').textContent = memberTasks.length + completedAssigned;
+        document.getElementById('memberPendingTasks').textContent = pendingAssigned;
+        
+        this.displayRegularTasks(memberTasks);
+        this.displayAssignedTasks(assignedTasks, memberName);
+    }
+
+    displayRegularTasks(tasks) {
+        const container = document.getElementById('regularTasksList');
+        
+        if (tasks.length === 0) {
+            container.innerHTML = '<p class="no-tasks">No regular tasks yet.</p>';
+            return;
+        }
+
+        const html = tasks.map(task => `
+            <div class="task-card completed">
+                <div class="task-content">
+                    <div class="task-date">${task.date}</div>
+                    <div class="task-description">${task.description}</div>
+                </div>
+                <div class="task-status">
+                    <span class="status-badge completed">✅ Completed</span>
+                </div>
+            </div>
+        `).join('');
+
+        container.innerHTML = html;
+    }
+
+    displayAssignedTasks(tasks, memberName) {
+        const container = document.getElementById('assignedTasksList');
+        
+        if (tasks.length === 0) {
+            container.innerHTML = '<p class="no-tasks">No assigned tasks yet.</p>';
+            return;
+        }
+
+        const html = tasks.map(task => {
+            const isOverdue = new Date(task.deadline) < new Date() && task.status !== 'completed';
+            const statusIcons = {
+                'pending': '⏳',
+                'in-progress': '🔄',
+                'completed': '✅',
+                'blocked': '🚫'
+            };
+            
+            const statusColors = {
+                'pending': '#f59e0b',
+                'in-progress': '#3b82f6',
+                'completed': '#10b981',
+                'blocked': '#ef4444'
+            };
+
+            return `
+                <div class="task-card assigned ${task.status} ${isOverdue ? 'overdue' : ''}">
+                    <div class="task-header">
+                        <div class="task-title">${task.title}</div>
+                        <div class="task-priority priority-${task.priority || 'normal'}">${task.priority || 'normal'}</div>
+                    </div>
+                    
+                    <div class="task-content">
+                        <div class="task-description">${task.description}</div>
+                        <div class="task-meta">
+                            <span><i class="fas fa-calendar"></i> Due: ${new Date(task.deadline).toLocaleDateString()}</span>
+                            ${isOverdue ? '<span class="overdue-text"><i class="fas fa-exclamation-triangle"></i> OVERDUE</span>' : ''}
+                        </div>
+                    </div>
+                    
+                    <div class="task-status">
+                        <div class="status-display" style="background: ${statusColors[task.status]};">
+                            ${statusIcons[task.status]} ${task.status.replace('-', ' ').toUpperCase()}
+                        </div>
+                        <button class="btn btn-sm btn-primary update-status-btn" 
+                                data-task-id="${task.id}" data-member="${memberName}">
+                            <i class="fas fa-edit"></i> Update
+                        </button>
+                    </div>
+                    
+                    ${task.remarks ? `
+                        <div class="task-remarks">
+                            <strong>Remarks:</strong> ${task.remarks}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = html;
+    }
+
+    async addNewTask() {
+        if (!this.currentSelectedMember) {
+            this.showMessage('Please select a member first!', 'error');
+            return;
+        }
+
+        const description = document.getElementById('newTaskDescription').value.trim();
+        if (!description) {
+            this.showMessage('Please enter task description!', 'error');
+            return;
+        }
+
+        const task = {
+            id: Date.now().toString(),
+            member: this.currentSelectedMember,
+            description: description,
+            date: new Date().toLocaleDateString(),
+            timestamp: new Date().toISOString()
+        };
+
+        if (!this.tasks[this.currentSelectedMember]) {
+            this.tasks[this.currentSelectedMember] = [];
+        }
+
+        this.tasks[this.currentSelectedMember].unshift(task);
+        await this.saveData('tasks', this.tasks);
+        
+        document.getElementById('newTaskDescription').value = '';
+        this.displayMemberTasks(this.currentSelectedMember);
+        this.showMessage('✅ Task added successfully!', 'success');
+    }
+
+    async updateTaskStatus(taskId, member) {
+        const memberTasks = this.assignedTasks[member] || [];
+        const taskIndex = memberTasks.findIndex(task => task.id === taskId);
+        
+        if (taskIndex !== -1) {
+            const task = memberTasks[taskIndex];
+            const newStatus = prompt(
+                `Update "${task.title}" status:\n\n` +
+                `Current: ${task.status.replace('-', ' ').toUpperCase()}\n\n` +
+                `Enter new status:\n` +
+                `1 = Pending\n` +
+                `2 = In Progress\n` +
+                `3 = Completed\n` +
+                `4 = Blocked\n\n` +
+                `Enter number (1-4):`
+            );
+            
+            if (newStatus) {
+                const statusMap = {
+                    '1': 'pending',
+                    '2': 'in-progress',
+                    '3': 'completed',
+                    '4': 'blocked'
+                };
+                
+                const status = statusMap[newStatus];
+                if (status) {
+                    const remarks = prompt(`Add remarks (optional):`);
+                    
+                    memberTasks[taskIndex].status = status;
+                    memberTasks[taskIndex].remarks = remarks || task.remarks;
+                    memberTasks[taskIndex].lastUpdated = new Date().toISOString();
+                    
+                    await this.saveData('assignedTasks', this.assignedTasks);
+                    this.displayMemberTasks(member);
+                    this.showMessage(`✅ Status updated to: ${status.replace('-', ' ')}`, 'success');
+                }
+            }
+        }
+    }
+
+    async assignTask() {
+        const member = document.getElementById('assignTaskMember').value;
+        const title = document.getElementById('assignTaskTitle').value.trim();
+        const description = document.getElementById('assignTaskDescription').value.trim();
+        const deadline = document.getElementById('taskDeadline').value;
+        const priority = document.getElementById('taskPriority').value;
+
+        if (!member || !title || !description || !deadline) {
+            this.showMessage('Please fill all required fields!', 'error');
+            return;
+        }
+
+        const task = {
+            id: Date.now().toString(),
+            member: member,
+            title: title,
+            description: description,
+            priority: priority,
+            deadline: deadline,
+            status: 'pending',
+            remarks: '',
+            assignedDate: new Date().toISOString(),
+            assignedBy: 'Admin'
+        };
+
+        if (!this.assignedTasks[member]) {
+            this.assignedTasks[member] = [];
+        }
+
+        this.assignedTasks[member].unshift(task);
+        await this.saveData('assignedTasks', this.assignedTasks);
+        
+        document.getElementById('assignTaskTitle').value = '';
+        document.getElementById('assignTaskDescription').value = '';
+        document.getElementById('taskDeadline').value = '';
+        
+        this.showMessage(`✅ Task "${title}" assigned to ${member}!`, 'success');
+    }
+
+    // [Include all other existing methods - attendance, ideas, admin, data management, etc.]
+    async markAttendance() {
+        const date = document.getElementById('sessionDate').value;
+        const member = document.getElementById('attendanceMember').value;
+        const status = document.querySelector('input[name="attendanceStatus"]:checked')?.value;
+
+        if (!date || !member || !status) {
+            this.showMessage('Please fill all fields!', 'error');
+            return;
+        }
+
+        if (!this.attendance[date]) {
+            this.attendance[date] = {};
+        }
+        this.attendance[date][member] = status;
+
+        await this.saveData('attendance', this.attendance);
+        this.showMessage(`✅ Attendance marked: ${member} - ${status}`, 'success');
+
+        document.getElementById('attendanceMember').value = '';
+        document.querySelectorAll('input[name="attendanceStatus"]').forEach(radio => {
+            radio.checked = false;
+        });
+        this.updateRadioStyles();
+        this.updateAttendanceDisplay();
+    }
+
+    async addIdea() {
+        const member = document.getElementById('ideaMember').value;
+        const content = document.getElementById('ideaContent').value.trim();
+
+        if (!member || !content) {
+            this.showMessage('Please select your name and add idea content!', 'error');
+            return;
+        }
+
+        const idea = {
+            id: Date.now().toString(),
+            member: member,
+            content: content,
+            date: new Date().toLocaleDateString(),
+            timestamp: new Date().toISOString()
+        };
+
+        this.ideas.unshift(idea);
+        
+        const ideasObj = {};
+        this.ideas.forEach(idea => {
+            ideasObj[idea.id] = idea;
+        });
+
+        await this.saveData('ideas', ideasObj);
+        this.showMessage('✅ Idea shared successfully!', 'success');
+
+        document.getElementById('ideaMember').value = '';
+        document.getElementById('ideaContent').value = '';
+        this.updateIdeasDisplay();
+    }
+
+    async saveData(dataType, data) {
+        localStorage.setItem(dataType, JSON.stringify(data));
+        
+        if (this.isOnline && this.database) {
+            try {
+                await this.database.ref(`teams/${this.teamId}/${dataType}`).set(data);
+            } catch (error) {
+                console.error(`Save error:`, error);
+            }
+        }
+    }
+
+    loadLocalData() {
+        this.members = JSON.parse(localStorage.getItem('members')) || this.members;
+        this.attendance = JSON.parse(localStorage.getItem('attendance')) || {};
+        this.tasks = JSON.parse(localStorage.getItem('tasks')) || {};
+        this.ideas = JSON.parse(localStorage.getItem('ideas')) || [];
+        this.assignedTasks = JSON.parse(localStorage.getItem('assignedTasks')) || {};
+    }
+
+    saveToLocalStorage() {
+        localStorage.setItem('members', JSON.stringify(this.members));
+        localStorage.setItem('attendance', JSON.stringify(this.attendance));
+        localStorage.setItem('tasks', JSON.stringify(this.tasks));
+        localStorage.setItem('ideas', JSON.stringify(this.ideas));
+        localStorage.setItem('assignedTasks', JSON.stringify(this.assignedTasks));
+    }
+
+    async syncToFirebase() {
+        if (!this.isOnline || !this.database) return;
+        
+        try {
+            await this.database.ref(`teams/${this.teamId}/members`).set(this.members);
+            await this.database.ref(`teams/${this.teamId}/attendance`).set(this.attendance);
+            await this.database.ref(`teams/${this.teamId}/tasks`).set(this.tasks);
+            await this.database.ref(`teams/${this.teamId}/assignedTasks`).set(this.assignedTasks);
+            
+            const ideasObj = {};
+            this.ideas.forEach(idea => {
+                ideasObj[idea.id] = idea;
+            });
+            await this.database.ref(`teams/${this.teamId}/ideas`).set(ideasObj);
+        } catch (error) {
+            console.error('Sync error:', error);
+        }
+    }
+
+    switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+
+        const targetTab = document.getElementById(tabName);
+        const targetNavTab = document.querySelector(`[data-tab="${tabName}"]`);
+        
+        if (targetTab) targetTab.classList.add('active');
+        if (targetNavTab) targetNavTab.classList.add('active');
+
+        if (tabName === 'admin' && this.isAdminLoggedIn) {
+            this.updateMembersList();
+        }
+
+        if (tabName !== 'tasks') {
+            const dashboard = document.getElementById('taskDashboard');
+            if (dashboard) dashboard.style.display = 'none';
+        }
+
+        this.updateAllDisplays();
+    }
+
+    populateSelects() {
+        const selects = ['attendanceMember', 'ideaMember', 'assignTaskMember', 'taskMemberSelect', 'individualMemberSelect'];
+        selects.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            if (select) {
+                let placeholder = 'Select a member...';
+                if (selectId === 'taskMemberSelect') placeholder = 'Choose a member to view/manage tasks...';
+                if (selectId === 'individualMemberSelect') placeholder = 'Choose member for individual report...';
+                
+                select.innerHTML = `<option value="">${placeholder}</option>`;
+                this.members.forEach(member => {
+                    const option = document.createElement('option');
+                    option.value = member;
+                    option.textContent = member;
+                    select.appendChild(option);
+                });
+            }
+        });
+    }
+
+    setTodayDate() {
+        const today = new Date().toISOString().split('T');
+        const sessionDate = document.getElementById('sessionDate');
+        if (sessionDate) sessionDate.value = today;
+    }
+
+    updateAllDisplays() {
+        this.updateAttendanceDisplay();
+        this.updateIdeasDisplay();
+        this.updateOverviewStats();
+    }
+
+    updateAttendanceDisplay() {
+        const membersList = document.getElementById('membersList');
+        if (!membersList) return;
+
+        const today = new Date().toISOString().split('T');
+        const todayAttendance = this.attendance[today] || {};
+
+        let presentCount = 0, absentCount = 0, notMarkedCount = 0;
+
+        let html = '<div class="attendance-date-group">';
+        html += '<div class="date-header"><span><i class="fas fa-calendar-day"></i> Today\'s Attendance</span></div>';
+        html += '<div class="members-grid" style="padding: 24px;">';
+
+        this.members.forEach(member => {
+            const status = todayAttendance[member] || 'not-marked';
+            if (status === 'present') presentCount++;
+            else if (status === 'absent') absentCount++;
+            else notMarkedCount++;
+
+            html += `
+                <div class="member-card ${status}">
+                    <div class="member-header">
+                        <div class="member-name">${member}</div>
+                        <div class="status-badge status-${status}">
+                            <i class="fas fa-${status === 'present' ? 'check' : status === 'absent' ? 'times' : 'clock'}"></i>
+                            ${status === 'not-marked' ? 'Not Marked' : status.charAt(0).toUpperCase() + status.slice(1)}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div></div>';
+        membersList.innerHTML = html;
+
+        document.getElementById('presentCount').textContent = presentCount;
+        document.getElementById('absentCount').textContent = absentCount;
+        document.getElementById('notMarkedCount').textContent = notMarkedCount;
+        
+        const rate = this.members.length > 0 ? Math.round((presentCount / this.members.length) * 100) : 0;
+        document.getElementById('attendanceRate').textContent = rate + '%';
+    }
+
+    updateIdeasDisplay() {
+        const ideasBoard = document.getElementById('ideasBoard');
+        if (!ideasBoard) return;
+
+        if (this.ideas.length === 0) {
+            ideasBoard.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: var(--gray-500);">
+                    <i class="fas fa-lightbulb" style="font-size: 3rem; margin-bottom: 16px; opacity: 0.3;"></i>
+                    <p>No ideas shared yet. Be the first to share your thoughts!</p>
+                </div>
+            `;
+            return;
+        }
+
+        const html = this.ideas.map(idea => `
+            <div class="idea-card">
+                <button class="delete-btn" data-id="${idea.id}">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="idea-author">${idea.member} - ${idea.date}</div>
+                <div class="idea-content">${idea.content}</div>
+            </div>
+        `).join('');
+
+        ideasBoard.innerHTML = html;
+    }
+
+    updateOverviewStats() {
+        const totalTasks = Object.values(this.tasks).reduce((total, memberTasks) => total + memberTasks.length, 0);
+        const totalAssigned = Object.values(this.assignedTasks).reduce((total, memberTasks) => total + memberTasks.length, 0);
+        const totalIdeas = this.ideas.length;
+        const activeDays = Object.keys(this.attendance).length;
+
+        let avgAttendance = 0;
+        if (activeDays > 0) {
+            const rates = Object.keys(this.attendance).map(date => {
+                const dayAttendance = this.attendance[date];
+                const presentCount = Object.values(dayAttendance).filter(status => status === 'present').length;
+                return (presentCount / this.members.length) * 100;
+            });
+            avgAttendance = Math.round(rates.reduce((sum, rate) => sum + rate, 0) / rates.length);
+        }
+
+        document.getElementById('totalTasks').textContent = totalTasks + totalAssigned;
+        document.getElementById('totalIdeas').textContent = totalIdeas;
+        document.getElementById('avgAttendance').textContent = avgAttendance + '%';
+        document.getElementById('activeDays').textContent = activeDays;
+
+        this.updatePerformanceSummary();
+    }
+
+    updatePerformanceSummary() {
+        const performanceSummary = document.getElementById('performanceSummary');
+        if (!performanceSummary) return;
+
+        const memberStats = this.members.map(member => {
+            const taskCount = this.tasks[member] ? this.tasks[member].length : 0;
+            const ideaCount = this.ideas.filter(idea => idea.member === member).length;
+            const assignedTasks = this.assignedTasks[member] || [];
+            const completedAssigned = assignedTasks.filter(task => task.status === 'completed').length;
+            
+            let attendanceCount = 0;
+            Object.values(this.attendance).forEach(dayAttendance => {
+                if (dayAttendance[member] === 'present') attendanceCount++;
+            });
+            
+            const totalDays = Object.keys(this.attendance).length;
+            const attendanceRate = totalDays > 0 ? (attendanceCount / totalDays) * 100 : 0;
+            
+            return {
+                name: member,
+                tasks: taskCount,
+                ideas: ideaCount,
+                assignedCompleted: completedAssigned,
+                attendanceRate: Math.round(attendanceRate),
+                totalScore: taskCount + ideaCount + (attendanceRate / 10) + completedAssigned * 2
             };
         });
 
         memberStats.sort((a, b) => b.totalScore - a.totalScore);
 
-        performanceSummary.innerHTML = `
-            <h3 style="margin-bottom: 24px; color: var(--gray-900);">
-                <i class="fas fa-trophy"></i> Performance Summary
-            </h3>
+        const html = `
+            <h3 style="margin-bottom: 24px;"><i class="fas fa-trophy"></i> Team Performance</h3>
             <div class="members-grid">
                 ${memberStats.slice(0, 6).map((member, index) => `
                     <div class="member-card">
@@ -716,7 +1375,7 @@ class TeamManager {
                                 ${member.name}
                             </div>
                         </div>
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px;">
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 16px;">
                             <div style="text-align: center; padding: 12px; background: rgba(102, 126, 234, 0.1); border-radius: 8px;">
                                 <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary);">${member.tasks}</div>
                                 <div style="font-size: 12px; color: var(--gray-600);">Tasks</div>
@@ -729,17 +1388,23 @@ class TeamManager {
                                 <div style="font-size: 1.5rem; font-weight: 700; color: var(--warning);">${member.attendanceRate}%</div>
                                 <div style="font-size: 12px; color: var(--gray-600);">Attendance</div>
                             </div>
+                            <div style="text-align: center; padding: 12px; background: rgba(139, 69, 19, 0.1); border-radius: 8px;">
+                                <div style="font-size: 1.5rem; font-weight: 700; color: #8b4513;">${member.assignedCompleted}</div>
+                                <div style="font-size: 12px; color: var(--gray-600);">Assigned</div>
+                            </div>
                         </div>
                     </div>
                 `).join('')}
             </div>
         `;
+
+        performanceSummary.innerHTML = html;
     }
 
     updateRadioStyles() {
         document.querySelectorAll('.radio-option').forEach(option => {
             const radio = option.querySelector('input[type="radio"]');
-            if (radio.checked) {
+            if (radio && radio.checked) {
                 option.classList.add('selected');
             } else {
                 option.classList.remove('selected');
@@ -747,103 +1412,12 @@ class TeamManager {
         });
     }
 
-    // PDF Export functionality
-    async exportToPDF() {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        
-        // Add title
-        doc.setFontSize(20);
-        doc.text('AI T19 - Team Management Report', 20, 20);
-        
-        doc.setFontSize(12);
-        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 30);
-        
-        let yPosition = 50;
-        
-        // Add team statistics
-        doc.setFontSize(16);
-        doc.text('Team Statistics', 20, yPosition);
-        yPosition += 10;
-        
-        doc.setFontSize(12);
-        const totalTasks = Object.values(this.tasks).reduce((total, memberTasks) => total + memberTasks.length, 0);
-        const totalIdeas = this.ideas.length;
-        const activeDays = Object.keys(this.attendance).length;
-        
-        doc.text(`Total Team Members: ${this.members.length}`, 20, yPosition);
-        yPosition += 8;
-        doc.text(`Total Tasks Completed: ${totalTasks}`, 20, yPosition);
-        yPosition += 8;
-        doc.text(`Total Ideas Shared: ${totalIdeas}`, 20, yPosition);
-        yPosition += 8;
-        doc.text(`Active Days: ${activeDays}`, 20, yPosition);
-        yPosition += 15;
-        
-        // Add member performance
-        doc.setFontSize(16);
-        doc.text('Member Performance', 20, yPosition);
-        yPosition += 10;
-        
-        doc.setFontSize(10);
-        const memberStats = this.members.map(member => {
-            const taskCount = this.tasks[member] ? this.tasks[member].length : 0;
-            const ideaCount = this.ideas.filter(idea => idea.member === member).length;
-            
-            let attendanceCount = 0;
-            Object.values(this.attendance).forEach(dayAttendance => {
-                if (dayAttendance[member] === 'present') attendanceCount++;
-            });
-            
-            const totalDays = Object.keys(this.attendance).length;
-            const attendanceRate = totalDays > 0 ? Math.round((attendanceCount / totalDays) * 100) : 0;
-            
-            return { name: member, tasks: taskCount, ideas: ideaCount, attendanceRate };
-        });
-        
-        memberStats.forEach(member => {
-            if (yPosition > 270) {
-                doc.addPage();
-                yPosition = 20;
-            }
-            
-            doc.text(`${member.name}:`, 20, yPosition);
-            doc.text(`Tasks: ${member.tasks} | Ideas: ${member.ideas} | Attendance: ${member.attendanceRate}%`, 30, yPosition + 5);
-            yPosition += 15;
-        });
-        
-        // Add recent attendance (last 10 days)
-        if (yPosition > 200) {
-            doc.addPage();
-            yPosition = 20;
+    updateConnectionStatus(message, status) {
+        const statusElement = document.getElementById('connectionStatus');
+        if (statusElement) {
+            statusElement.innerHTML = message;
+            statusElement.className = `connection-status ${status}`;
         }
-        
-        doc.setFontSize(16);
-        doc.text('Recent Attendance (Last 10 Records)', 20, yPosition);
-        yPosition += 10;
-        
-        doc.setFontSize(10);
-        const recentDates = Object.keys(this.attendance).sort().slice(-10);
-        
-        recentDates.forEach(date => {
-            if (yPosition > 270) {
-                doc.addPage();
-                yPosition = 20;
-            }
-            
-            const dayAttendance = this.attendance[date];
-            const presentCount = Object.values(dayAttendance).filter(s => s === 'present').length;
-            const rate = Math.round((presentCount / this.members.length) * 100);
-            
-            doc.text(`${date}: ${presentCount}/${this.members.length} present (${rate}%)`, 20, yPosition);
-            yPosition += 8;
-        });
-        
-        // Save the PDF
-        const fileName = `AI_T19_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-        doc.save(fileName);
-        
-        this.showMessage('PDF report generated successfully!', 'success');
     }
 
     adminLogin() {
@@ -854,11 +1428,11 @@ class TeamManager {
             this.isAdminLoggedIn = true;
             document.getElementById('adminLogin').style.display = 'none';
             document.getElementById('adminPanel').style.display = 'block';
-            errorDiv.style.display = 'none';
+            if (errorDiv) errorDiv.style.display = 'none';
             this.updateMembersList();
-            this.showMessage('Admin access granted!', 'success');
+            this.showMessage('✅ Admin access granted!', 'success');
         } else {
-            errorDiv.style.display = 'block';
+            if (errorDiv) errorDiv.style.display = 'block';
             document.getElementById('adminPassword').value = '';
         }
     }
@@ -868,7 +1442,79 @@ class TeamManager {
         document.getElementById('adminLogin').style.display = 'block';
         document.getElementById('adminPanel').style.display = 'none';
         document.getElementById('adminPassword').value = '';
-        this.showMessage('Admin logged out successfully!', 'success');
+        this.showMessage('✅ Admin logged out successfully!', 'success');
+    }
+
+    updateMembersList() {
+        const membersList = document.querySelector('#admin .members-list');
+        if (!membersList) return;
+        
+        const html = this.members.map(member => `
+            <div class="member-item">
+                <span class="member-name">${member}</span>
+                <button class="remove-member-btn" data-member="${member}">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `).join('');
+        
+        membersList.innerHTML = html;
+    }
+
+    async addMember() {
+        const memberName = document.getElementById('newMemberName').value.trim();
+        
+        if (!memberName) {
+            this.showMessage('Please enter a member name!', 'error');
+            return;
+        }
+
+        if (this.members.includes(memberName)) {
+            this.showMessage('Member already exists!', 'error');
+            return;
+        }
+
+        this.members.push(memberName);
+        await this.saveData('members', this.members);
+
+        document.getElementById('newMemberName').value = '';
+        this.showMessage(`✅ Member "${memberName}" added successfully!`, 'success');
+        this.populateSelects();
+        this.updateMembersList();
+    }
+
+    async removeMember(memberName) {
+        if (confirm(`Remove "${memberName}"? This will delete all their data.`)) {
+            this.members = this.members.filter(member => member !== memberName);
+            delete this.tasks[memberName];
+            delete this.assignedTasks[memberName];
+            this.ideas = this.ideas.filter(idea => idea.member !== memberName);
+            
+            Object.keys(this.attendance).forEach(date => {
+                delete this.attendance[date][memberName];
+            });
+
+            await this.saveData('members', this.members);
+            this.showMessage(`✅ Member "${memberName}" removed successfully!`, 'success');
+            this.populateSelects();
+            this.updateMembersList();
+            this.updateAllDisplays();
+        }
+    }
+
+    async deleteIdea(ideaId) {
+        if (confirm('Delete this idea?')) {
+            this.ideas = this.ideas.filter(idea => idea.id !== ideaId);
+            
+            const ideasObj = {};
+            this.ideas.forEach(idea => {
+                ideasObj[idea.id] = idea;
+            });
+            
+            await this.saveData('ideas', ideasObj);
+            this.showMessage('✅ Idea deleted successfully!', 'success');
+            this.updateIdeasDisplay();
+        }
     }
 
     exportData() {
@@ -877,6 +1523,7 @@ class TeamManager {
             attendance: this.attendance,
             tasks: this.tasks,
             ideas: this.ideas,
+            assignedTasks: this.assignedTasks,
             exportDate: new Date().toISOString()
         };
         
@@ -884,86 +1531,40 @@ class TeamManager {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `team_management_backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.download = `team_data_${new Date().toISOString().split('T')}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
-        this.showMessage('Data exported successfully!', 'success');
+        this.showMessage('✅ Data exported successfully!', 'success');
     }
 
-    importData() {
-        const fileInput = document.getElementById('importFile');
-        const file = fileInput.files[0];
-        
-        if (!file) {
-            this.showMessage('Please select a file to import!', 'error');
-            return;
-        }
-        
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = JSON.parse(e.target.result);
-                
-                if (data.members && data.attendance && data.tasks && data.ideas) {
-                    this.members = data.members;
-                    this.attendance = data.attendance;
-                    this.tasks = data.tasks;
-                    this.ideas = data.ideas;
-                    
-                    this.saveData();
-                    this.populateSelects();
-                    this.updateAllDisplays();
-                    
-                    this.showMessage('Data imported successfully!', 'success');
-                    fileInput.value = '';
-                } else {
-                    this.showMessage('Invalid file format!', 'error');
-                }
-            } catch (error) {
-                this.showMessage('Error reading file!', 'error');
-            }
-        };
-        reader.readAsText(file);
-    }
-
-    clearAllData() {
-        if (confirm('Are you sure you want to clear all data? This action cannot be undone!')) {
+    async clearAllData() {
+        if (confirm('Clear all data? This cannot be undone!')) {
             this.attendance = {};
             this.tasks = {};
             this.ideas = [];
+            this.assignedTasks = {};
             
-            this.saveData();
+            await this.saveData('attendance', this.attendance);
+            await this.saveData('tasks', this.tasks);
+            await this.saveData('ideas', []);
+            await this.saveData('assignedTasks', this.assignedTasks);
+            
             this.updateAllDisplays();
-            this.showMessage('All data cleared successfully!', 'success');
+            this.showMessage('✅ All data cleared successfully!', 'success');
         }
-    }
-
-    resetAttendance() {
-        if (confirm('Are you sure you want to reset all attendance data?')) {
-            this.attendance = {};
-            this.saveData();
-            this.updateAttendanceDisplay();
-            this.updateOverviewStats();
-            this.showMessage('Attendance data reset successfully!', 'success');
-        }
-    }
-
-    saveData() {
-        localStorage.setItem('members', JSON.stringify(this.members));
-        localStorage.setItem('attendance', JSON.stringify(this.attendance));
-        localStorage.setItem('tasks', JSON.stringify(this.tasks));
-        localStorage.setItem('ideas', JSON.stringify(this.ideas));
     }
 
     showMessage(message, type = 'success') {
         const messageContainer = document.getElementById('messageContainer');
+        if (!messageContainer) return;
+        
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
         messageDiv.innerHTML = `
-            <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'}"></i>
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle'}"></i>
             ${message}
         `;
         
@@ -977,7 +1578,14 @@ class TeamManager {
     }
 }
 
-// Initialize the application when DOM is loaded
+// Initialize Team Manager
 document.addEventListener('DOMContentLoaded', () => {
-    new TeamManager();
+    console.log('🌟 Starting Enhanced Team Management App with Category PDF Reports');
+    
+    if (typeof firebase === 'undefined') {
+        console.error('❌ Firebase SDK not loaded');
+        return;
+    }
+    
+    window.teamManager = new TeamManager();
 });
