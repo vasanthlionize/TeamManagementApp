@@ -160,7 +160,7 @@ class InputSanitizer {
     }
 }
 
-// COMPLETE Team Manager - WITH FIREBASE SYNC FIXES
+// COMPLETE Team Manager - WITH FIREBASE CONNECTION FIXES
 class CompleteTeamManager {
     constructor() {
         this.teamId = 'ai-t19';
@@ -190,8 +190,6 @@ class CompleteTeamManager {
         this.performance = new PerformanceManager();
         this.security = new SecurityManager();
         this.sanitizer = new InputSanitizer();
-        
-        this.localCache = new Map();
         
         console.log('🚀 Complete Team Manager initialized');
         this.init();
@@ -252,10 +250,12 @@ class CompleteTeamManager {
         this.showTemporaryStatus('offline', 'Running in offline mode', 3000);
     }
 
-    // FIXED Firebase Connection - Main Fix for Sync Issues
+    // FIXED Firebase Connection - Removes Connection Issues
     async initializeFirebaseWithAuth() {
         try {
-            // Initialize Firebase only once
+            console.log('🔄 Connecting to Firebase Database...');
+            
+            // Initialize Firebase
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
             }
@@ -263,50 +263,183 @@ class CompleteTeamManager {
             this.database = firebase.database();
             this.auth = firebase.auth();
             
-            // ✅ REMOVED PROBLEMATIC goOffline() and goOnline() calls
-            // These were causing the "always offline" issue
+            console.log('🔑 Starting authentication...');
             
-            // Authenticate
-            await this.auth.signInAnonymously();
-            console.log('✅ Firebase Connected Successfully');
+            // Anonymous sign in
+            const userCredential = await this.auth.signInAnonymously();
+            console.log('✅ Authentication successful:', userCredential.user.uid);
             
-            // Test connection properly
-            await this.testConnectionFixed();
+            // Test database write immediately after auth
+            console.log('🧪 Testing database write...');
+            const testRef = this.database.ref('connection_test');
+            await testRef.set({
+                timestamp: Date.now(),
+                status: 'connected',
+                uid: userCredential.user.uid
+            });
+            console.log('✅ Database write successful');
+            
+            // Clean up test
+            await testRef.remove();
+            console.log('✅ Database connection confirmed');
+            
             this.isOnline = true;
             this.connectionState = 'online';
             
-            this.showTemporaryStatus('online', 'Connected and syncing', 1500);
+            this.showTemporaryStatus('online', 'Database Connected!', 2000);
             this.updateSyncStatus('Connected');
             
-            // Setup listeners AFTER successful connection
-            this.setupEnhancedListeners();
+            // Setup real-time listeners
+            this.setupConnectionMonitoring();
+            this.setupDataListeners();
+            
+            // Initial sync
             await this.syncAllDataToFirebase();
             
+            console.log('🚀 Firebase fully operational');
+            
         } catch (error) {
-            console.warn('⚠️ Firebase connection failed:', error);
+            console.error('❌ Firebase connection failed:', error);
+            console.error('Error details:', {
+                code: error.code,
+                message: error.message,
+                details: error
+            });
+            
+            // Show specific error to user
+            if (error.code === 'PERMISSION_DENIED') {
+                this.showMessage('🔒 Database permission denied - check Firebase rules!', 'error');
+                this.showDatabaseFixHelp();
+            } else if (error.code === 'NETWORK_ERROR') {
+                this.showMessage('🌐 Network error - check internet connection!', 'error');
+            } else {
+                this.showMessage(`❌ Connection failed: ${error.message}`, 'error');
+            }
+            
             this.handleConnectionError(error);
         }
     }
 
-    // FIXED Connection Test
-    async testConnectionFixed() {
-        return new Promise((resolve, reject) => {
-            const connectedRef = this.database.ref('.info/connected');
-            const timeout = setTimeout(() => {
-                connectedRef.off('value');
-                reject(new Error('Connection timeout'));
-            }, 10000);
+    // Enhanced connection monitoring
+    setupConnectionMonitoring() {
+        const connectedRef = this.database.ref('.info/connected');
+        
+        connectedRef.on('value', (snapshot) => {
+            const isConnected = snapshot.val();
+            console.log(`📡 Connection status: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`);
             
-            connectedRef.once('value', (snapshot) => {
-                clearTimeout(timeout);
-                if (snapshot.val() === true) {
-                    console.log('✅ Firebase connection confirmed');
-                    resolve();
-                } else {
-                    reject(new Error('Database not connected'));
+            if (isConnected) {
+                this.isOnline = true;
+                this.updateSyncStatus('Connected');
+                console.log('✅ Database is online');
+                this.processSyncQueue();
+                this.clearSyncErrors();
+            } else {
+                this.isOnline = false;
+                this.updateSyncStatus('Disconnected');
+                console.log('❌ Database is offline');
+            }
+        });
+    }
+
+    // Enhanced data listeners
+    setupDataListeners() {
+        const paths = ['members', 'memberDetails', 'attendance', 'tasks', 'ideas', 'assignedTasks'];
+        
+        paths.forEach(path => {
+            const ref = this.database.ref(`teams/${this.teamId}/${path}`);
+            
+            ref.on('value', (snapshot) => {
+                console.log(`📥 Data received for ${path}:`, snapshot.exists() ? 'Has data' : 'Empty');
+                
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    
+                    // Handle different data structures
+                    if (path === 'members' && Array.isArray(data)) {
+                        this.members = data;
+                        this.initializeMemberDetails();
+                    } else if (path === 'ideas' && Array.isArray(data)) {
+                        this.ideas = data;
+                    } else if (path === 'memberDetails' && typeof data === 'object') {
+                        this.memberDetails = { ...this.memberDetails, ...data };
+                    } else {
+                        this[path] = data;
+                    }
+                    
+                    // Save locally and update UI
+                    this.saveLocalData(path, this[path]);
+                    this.performance.debounce(`update_${path}`, () => {
+                        this.updateDisplaysForPath(path);
+                    }, 300);
+                    
+                    this.logActivity(`${path} synchronized`);
+                    this.clearSyncError(path);
+                }
+            }, (error) => {
+                console.error(`❌ Listener error for ${path}:`, error);
+                this.addSyncError(path, error);
+                
+                if (error.code === 'PERMISSION_DENIED') {
+                    this.showMessage(`🔒 Permission denied for ${path}`, 'error');
+                    this.showDatabaseFixHelp();
                 }
             });
+            
+            this.listeners.set(path, ref);
         });
+    }
+
+    // Database Fix Help Modal
+    showDatabaseFixHelp() {
+        if (document.querySelector('.database-fix-help')) return;
+        
+        const helpDiv = document.createElement('div');
+        helpDiv.className = 'database-fix-help';
+        helpDiv.innerHTML = `
+            <div class="fix-help-content">
+                <h3>🔒 Database Rules Fix Required</h3>
+                <p><strong>Your Firebase Realtime Database rules are blocking access.</strong></p>
+                
+                <div class="fix-steps">
+                    <h4>🔧 Quick Fix Steps:</h4>
+                    <ol>
+                        <li>Go to <a href="https://console.firebase.google.com/project/team-management-app-63275/database/team-management-app-63275-default-rtdb/rules" target="_blank">Firebase Console → Database Rules</a></li>
+                        <li>Make sure you're on <strong>Realtime Database</strong> (not Firestore)</li>
+                        <li>Replace rules with this for testing:</li>
+                    </ol>
+                    
+                    <div class="rules-code">
+                        <h5>For Testing (Allow All):</h5>
+                        <pre><code>{
+  "rules": {
+    ".read": true,
+    ".write": true
+  }
+}</code></pre>
+                        
+                        <h5>For Production (Authenticated Users):</h5>
+                        <pre><code>{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null"
+  }
+}</code></pre>
+                    </div>
+                    
+                    <ol start="4">
+                        <li>Click <strong>Publish</strong></li>
+                        <li>Refresh your app</li>
+                    </ol>
+                </div>
+                
+                <button class="btn btn-success" onclick="this.parentElement.parentElement.remove()">
+                    <i class="fas fa-check"></i> I've Updated The Rules
+                </button>
+            </div>
+        `;
+        
+        document.body.appendChild(helpDiv);
     }
 
     handleConnectionError(error) {
@@ -319,14 +452,9 @@ class CompleteTeamManager {
             timestamp: new Date().toISOString()
         });
         
-        if (error.code === 'PERMISSION_DENIED') {
-            this.showMessage('🔒 Database access denied. Using offline mode.', 'warning');
-            this.showDatabaseRulesHelp();
-        } else {
-            this.showTemporaryStatus('offline', 'Working offline', 3000);
-            this.updateSyncStatus('Offline');
-            this.scheduleReconnection();
-        }
+        this.showTemporaryStatus('offline', 'Working offline', 3000);
+        this.updateSyncStatus('Offline');
+        this.scheduleReconnection();
     }
 
     scheduleReconnection() {
@@ -336,123 +464,6 @@ class CompleteTeamManager {
                 this.initializeFirebaseWithAuth();
             }
         }, 10000);
-    }
-
-    showDatabaseRulesHelp() {
-        if (document.querySelector('.database-rules-help')) return;
-        
-        const helpDiv = document.createElement('div');
-        helpDiv.className = 'database-rules-help';
-        helpDiv.innerHTML = `
-            <div class="rules-help-content">
-                <h3>🔒 Database Rules Update Required</h3>
-                <p>For testing purposes, use these simple rules:</p>
-                <div class="rules-instructions">
-                    <h4>Quick Fix:</h4>
-                    <ol>
-                        <li>Go to <a href="https://console.firebase.google.com/" target="_blank">Firebase Console</a></li>
-                        <li>Select project: <strong>team-management-app-63275</strong></li>
-                        <li>Go to <strong>Realtime Database</strong> → <strong>Rules</strong></li>
-                        <li>Use: <code>{ "rules": { ".read": true, ".write": true } }</code></li>
-                        <li>Click <strong>Publish</strong></li>
-                    </ol>
-                </div>
-                <button class="btn btn-info" onclick="this.parentElement.parentElement.remove()">
-                    <i class="fas fa-times"></i> Close
-                </button>
-            </div>
-        `;
-        
-        document.body.appendChild(helpDiv);
-        setTimeout(() => helpDiv.remove(), 45000);
-    }
-
-    // ENHANCED Firebase Listeners - Fixed for proper syncing
-    setupEnhancedListeners() {
-        if (!this.database) return;
-        console.log('🔄 Setting up enhanced real-time listeners...');
-
-        // Monitor connection status
-        const connectedRef = this.database.ref('.info/connected');
-        connectedRef.on('value', (snapshot) => {
-            const isConnected = snapshot.val();
-            console.log('Connection status:', isConnected ? 'ONLINE' : 'OFFLINE');
-            
-            if (isConnected && !this.isOnline) {
-                this.isOnline = true;
-                this.connectionState = 'online';
-                this.showTemporaryStatus('online', 'Connection restored', 2000);
-                this.updateSyncStatus('Connected');
-                this.processSyncQueue();
-                this.clearSyncErrors();
-            } else if (!isConnected && this.isOnline) {
-                this.isOnline = false;
-                this.connectionState = 'offline';
-                this.showTemporaryStatus('offline', 'Connection lost', 3000);
-                this.updateSyncStatus('Offline');
-            }
-        });
-
-        // Setup data listeners with error handling
-        const dataPaths = ['members', 'memberDetails', 'attendance', 'tasks', 'ideas', 'assignedTasks'];
-        
-        dataPaths.forEach(path => {
-            this.setupDataListenerFixed(path);
-        });
-    }
-
-    // FIXED Data Listener with proper error handling
-    setupDataListenerFixed(path) {
-        try {
-            const ref = this.database.ref(`teams/${this.teamId}/${path}`);
-            
-            ref.on('value', (snapshot) => {
-                try {
-                    const data = snapshot.val();
-                    if (data !== null) {
-                        console.log(`📥 ${path} synchronized successfully`);
-                        
-                        // Handle different data structures
-                        if (path === 'members' && Array.isArray(data)) {
-                            this.members = data;
-                            this.initializeMemberDetails();
-                        } else if (path === 'ideas' && Array.isArray(data)) {
-                            this.ideas = data;
-                        } else if (path === 'memberDetails' && typeof data === 'object') {
-                            this.memberDetails = { ...this.memberDetails, ...data };
-                        } else {
-                            this[path] = data;
-                        }
-                        
-                        // Save locally and update UI
-                        this.saveLocalData(path, this[path]);
-                        this.performance.debounce(`update_${path}`, () => {
-                            this.updateDisplaysForPath(path);
-                        }, 300);
-                        
-                        this.logActivity(`${path} synchronized`);
-                        this.clearSyncError(path);
-                    }
-                } catch (error) {
-                    console.error(`Error processing ${path} data:`, error);
-                    this.addSyncError(path, error);
-                }
-            }, (error) => {
-                console.error(`Listener error for ${path}:`, error);
-                this.addSyncError(path, error);
-                
-                // Handle specific errors
-                if (error.code === 'PERMISSION_DENIED') {
-                    this.showMessage('🔒 Database rules need updating for full access', 'warning');
-                    this.showDatabaseRulesHelp();
-                }
-            });
-            
-            this.listeners.set(path, ref);
-        } catch (error) {
-            console.error(`Failed to setup ${path} listener:`, error);
-            this.addSyncError(path, error);
-        }
     }
 
     updateDisplaysForPath(path) {
@@ -488,78 +499,51 @@ class CompleteTeamManager {
 
     // ENHANCED Data Operations with better sync
     async saveData(key, data) {
-        try {
-            // Update UI immediately
-            this.updateUIOptimistically(key, data);
-            
-            return this.performance.queueOperation(async () => {
-                if (!this.database || !this.auth.currentUser || !this.isOnline) {
-                    console.log(`Queuing ${key} for sync (offline)`);
+        const maxRetries = 3;
+        let attempt = 0;
+        
+        while (attempt < maxRetries) {
+            try {
+                // Update UI immediately
+                this[key] = data;
+                this.updateDisplaysForPath(key);
+                
+                if (!this.database || !this.auth.currentUser) {
+                    throw new Error('Database or auth not ready');
+                }
+                
+                // Force token refresh before critical operations
+                await this.auth.currentUser.getIdToken(true);
+                
+                const ref = this.database.ref(`teams/${this.teamId}/${key}`);
+                await ref.set(data);
+                
+                this.saveLocalData(key, data);
+                console.log(`✅ ${key} saved successfully (attempt ${attempt + 1})`);
+                this.clearSyncError(key);
+                return true;
+                
+            } catch (error) {
+                attempt++;
+                console.error(`❌ Save attempt ${attempt} failed for ${key}:`, error);
+                
+                if (error.code === 'PERMISSION_DENIED') {
+                    this.showMessage('🔒 Permission denied. Update Firebase rules!', 'error');
+                    this.showDatabaseFixHelp();
+                    break;
+                }
+                
+                if (attempt < maxRetries) {
+                    console.log(`🔄 Retrying save for ${key} in 2 seconds...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } else {
                     this.saveLocalData(key, data);
                     this.queueForSync(key, data);
-                    return false;
                 }
-
-                try {
-                    const ref = this.database.ref(`teams/${this.teamId}/${key}`);
-                    await ref.set(data);
-                    this.saveLocalData(key, data);
-                    console.log(`✅ ${key} saved and synced successfully`);
-                    this.clearSyncError(key);
-                    return true;
-                    
-                } catch (error) {
-                    console.error(`❌ Failed to save ${key}:`, error);
-                    this.addSyncError(key, error);
-                    
-                    if (error.code === 'PERMISSION_DENIED') {
-                        this.showMessage('🔒 Save failed: Database permission denied', 'warning');
-                        this.showDatabaseRulesHelp();
-                    } else {
-                        this.showMessage(`❌ Save failed: ${error.message}`, 'error');
-                    }
-                    
-                    // Fallback to local storage and queue
-                    this.saveLocalData(key, data);
-                    this.queueForSync(key, data);
-                    return false;
-                }
-            });
-        } catch (error) {
-            console.error(`Error in saveData for ${key}:`, error);
-            this.addSyncError(key, error);
-            return false;
-        }
-    }
-
-    updateUIOptimistically(key, data) {
-        try {
-            this[key] = data;
-            
-            switch(key) {
-                case 'members':
-                    this.populateAllSelects();
-                    this.updateAdminMembersList();
-                    break;
-                case 'memberDetails':
-                    this.updateAdminMembersList();
-                    break;
-                case 'attendance':
-                    this.updateAttendanceDisplay();
-                    break;
-                case 'ideas':
-                    this.updateIdeasDisplay();
-                    break;
-                case 'tasks':
-                case 'assignedTasks':
-                    if (this.currentSelectedMember) {
-                        this.displayMemberTasks(this.currentSelectedMember);
-                    }
-                    break;
             }
-        } catch (error) {
-            console.error(`Error in optimistic update for ${key}:`, error);
         }
+        
+        return false;
     }
 
     queueForSync(key, data) {
@@ -628,7 +612,6 @@ class CompleteTeamManager {
         const buttonId = 'markAttendanceBtn';
         
         if (this.performance.isButtonBusy(buttonId)) return;
-        
         this.performance.setBusy(buttonId, true);
         
         try {
@@ -1144,7 +1127,7 @@ class CompleteTeamManager {
         }
     }
 
-    async deleteIdea(id) { 
+    async deleteIdea(id) {
         if (confirm('Delete this idea?')) {
             try {
                 this.ideas = this.ideas.filter(idea => idea.id !== id);
@@ -1162,354 +1145,7 @@ class CompleteTeamManager {
         }
     }
 
-    // OVERVIEW TAB - All Functions
-    showPerformanceReport() {
-        const buttonId = 'performanceReportBtn';
-        
-        if (this.performance.isButtonBusy(buttonId)) return;
-        
-        this.performance.setBusy(buttonId, true);
-        
-        setTimeout(() => {
-            try {
-                const performanceReport = document.getElementById('performanceReport');
-                const performanceContent = document.getElementById('performanceContent');
-                const btn = document.getElementById(buttonId);
-                
-                if (!performanceReport || !performanceContent) {
-                    this.showMessage('❌ Performance report elements not found', 'error');
-                    return;
-                }
-                
-                if (performanceReport.style.display === 'none' || !performanceReport.style.display) {
-                    performanceReport.style.display = 'block';
-                    btn.innerHTML = '<i class="fas fa-chart-bar"></i> Hide Performance';
-                    
-                    const reportHTML = this.generateCompletePerformanceReport();
-                    performanceContent.innerHTML = reportHTML;
-                    
-                    performanceReport.scrollIntoView({ behavior: 'smooth' });
-                    this.logActivity('Performance report generated');
-                } else {
-                    performanceReport.style.display = 'none';
-                    btn.innerHTML = '<i class="fas fa-tachometer-alt"></i> Performance Report';
-                }
-                
-            } catch (error) {
-                console.error('Performance report error:', error);
-                this.showMessage('❌ Failed to generate performance report', 'error');
-            } finally {
-                this.performance.setBusy(buttonId, false);
-            }
-        }, 300);
-    }
-
-    generateCompletePerformanceReport() {
-        try {
-            const totalMembers = this.members.length;
-            const totalDays = Object.keys(this.attendance).length;
-            const totalIdeas = this.ideas.length;
-            const totalTasks = this.calculateTotalTasks();
-            const avgAttendance = this.calculateAvgAttendance();
-            
-            const allMemberPerformance = this.calculateAllMembersPerformance();
-            
-            return `
-                <div class="performance-overview">
-                    <h4><i class="fas fa-chart-pie"></i> Complete Team Performance Analysis</h4>
-                    <div class="performance-metrics">
-                        <div class="metric-card">
-                            <div class="metric-title">Team Size</div>
-                            <div class="metric-value">${totalMembers}</div>
-                            <div class="metric-trend">Complete Team</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-title">Activity Days</div>
-                            <div class="metric-value">${totalDays}</div>
-                            <div class="metric-trend">${totalDays > 0 ? 'Active Tracking' : 'Getting Started'}</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-title">Total Tasks</div>
-                            <div class="metric-value">${totalTasks}</div>
-                            <div class="metric-trend">${totalTasks > totalMembers ? 'High Productivity' : 'Building'}</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-title">Ideas Generated</div>
-                            <div class="metric-value">${totalIdeas}</div>
-                            <div class="metric-trend">${totalIdeas > totalMembers ? 'Creative Team' : 'Innovation Growing'}</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-title">Avg Attendance</div>
-                            <div class="metric-value">${avgAttendance}%</div>
-                            <div class="metric-trend">${avgAttendance >= 80 ? 'Excellent' : avgAttendance >= 60 ? 'Good' : 'Improving'}</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-title">Connection Status</div>
-                            <div class="metric-value">${this.isOnline ? 'ONLINE' : 'OFFLINE'}</div>
-                            <div class="metric-trend">${this.syncErrors.length === 0 ? 'All Systems Good' : 'Minor Issues'}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="performance-section">
-                    <h4><i class="fas fa-users"></i> Individual Member Performance (All ${totalMembers} Members)</h4>
-                    <div class="member-performance-grid">
-                        ${allMemberPerformance.map((member, index) => `
-                            <div class="performance-member-card ${index < 3 ? 'top-performer' : ''}">
-                                <div class="performance-rank rank-${index + 1}">${index + 1}</div>
-                                <div class="member-info">
-                                    <h5>${member.name}</h5>
-                                    <div class="performance-score">Score: ${member.score}%</div>
-                                </div>
-                                <div class="performance-stats">
-                                    <div class="stat-row">
-                                        <div class="stat-item">
-                                            <span class="stat-number">${member.attendanceRate}%</span>
-                                            <span class="stat-label">Attendance</span>
-                                        </div>
-                                        <div class="stat-item">
-                                            <span class="stat-number">${member.ideaCount}</span>
-                                            <span class="stat-label">Ideas</span>
-                                        </div>
-                                    </div>
-                                    <div class="stat-row">
-                                        <div class="stat-item">
-                                            <span class="stat-number">${member.taskCount || 0}</span>
-                                            <span class="stat-label">Tasks</span>
-                                        </div>
-                                        <div class="stat-item">
-                                            <span class="stat-number">${member.activeDays || 0}</span>
-                                            <span class="stat-label">Days</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="performance-badge ${this.getPerformanceBadgeClass(member.score)}">
-                                    ${this.getPerformanceBadge(member.score)}
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-
-                <div class="sync-status-section">
-                    <h4><i class="fas fa-sync-alt"></i> System Status with Firebase Sync</h4>
-                    <div class="sync-info">
-                        <p><strong>Connection:</strong> ${this.isOnline ? '🟢 ONLINE' : '🔴 OFFLINE'}</p>
-                        <p><strong>Sync Queue:</strong> ${this.syncQueue.length} items pending</p>
-                        <p><strong>Sync Errors:</strong> ${this.syncErrors.length} issues</p>
-                        <p><strong>Database Status:</strong> ${this.isOnline ? 'Connected and Syncing' : 'Working Offline'}</p>
-                        <p><strong>Last Updated:</strong> ${new Date().toLocaleString()}</p>
-                    </div>
-                </div>
-
-                <div class="report-footer">
-                    <p><i class="fas fa-info-circle"></i> Report generated on ${new Date().toLocaleString()}</p>
-                    <p><i class="fas fa-sync-alt"></i> Firebase Sync: ${this.isOnline ? 'ONLINE' : 'OFFLINE'}</p>
-                    <p><i class="fas fa-users"></i> Complete Team Analysis: All ${totalMembers} Members</p>
-                    <p><i class="fas fa-database"></i> All Functions Validated with Real-time Sync</p>
-                </div>
-            `;
-        } catch (error) {
-            console.error('Error generating performance report:', error);
-            return `
-                <div class="error-message">
-                    <h4>⚠️ Error Generating Report</h4>
-                    <p>There was an issue generating the performance report. Please try again.</p>
-                    <p><small>Error: ${error.message}</small></p>
-                </div>
-            `;
-        }
-    }
-
-    toggleActivityFeed() { 
-        const feed = document.getElementById('activityFeed');
-        const btn = document.getElementById('toggleActivityBtn');
-        
-        if (feed && btn) {
-            if (feed.style.display === 'none' || !feed.style.display) {
-                feed.style.display = 'block';
-                btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Activity Feed';
-                this.updateActivityFeed();
-            } else {
-                feed.style.display = 'none';
-                btn.innerHTML = '<i class="fas fa-stream"></i> Show Activity Feed';
-            }
-        }
-    }
-
-    updateActivityFeed() {
-        const list = document.getElementById('activityList');
-        if (list) {
-            list.innerHTML = `
-                <div class="activity-item">
-                    <span><i class="fas fa-rocket"></i> Firebase sync active</span>
-                    <span class="activity-time">Now</span>
-                </div>
-                <div class="activity-item">
-                    <span><i class="fas fa-check-circle"></i> All functions validated</span>
-                    <span class="activity-time">Now</span>
-                </div>
-            `;
-        }
-    }
-
-    previewReport() {
-        const buttonId = 'previewReportBtn';
-        
-        if (this.performance.isButtonBusy(buttonId)) return;
-        this.performance.setBusy(buttonId, true);
-        
-        try {
-            const reportPreview = document.getElementById('reportPreview');
-            const reportContent = document.getElementById('reportPreviewContent');
-            const category = document.getElementById('exportCategory').value;
-            
-            if (!reportPreview || !reportContent) {
-                this.showMessage('❌ Report preview elements not found', 'error');
-                return;
-            }
-            
-            if (reportPreview.style.display === 'none' || !reportPreview.style.display) {
-                reportPreview.style.display = 'block';
-                
-                let previewHTML = this.generateSimplePreview(category);
-                reportContent.innerHTML = previewHTML;
-                
-                reportPreview.scrollIntoView({ behavior: 'smooth' });
-                this.showMessage('✅ Report preview generated!', 'success');
-                this.logActivity(`Report preview generated: ${category}`);
-            } else {
-                reportPreview.style.display = 'none';
-            }
-            
-        } catch (error) {
-            console.error('Preview error:', error);
-            this.showMessage('❌ Preview failed', 'error');
-        } finally {
-            this.performance.setBusy(buttonId, false);
-        }
-    }
-
-    generateSimplePreview(category) {
-        const stats = {
-            members: this.members.length,
-            ideas: this.ideas.length,
-            tasks: this.calculateTotalTasks(),
-            attendance: this.calculateAvgAttendance(),
-            connection: this.isOnline ? 'ONLINE' : 'OFFLINE',
-            syncStatus: this.syncQueue.length === 0 ? 'All Synced' : `${this.syncQueue.length} Pending`
-        };
-        
-        return `
-            <div class="report-header">
-                <h4>📊 ${category.charAt(0).toUpperCase() + category.slice(1)} Report Preview</h4>
-                <p>Generated: ${new Date().toLocaleString()}</p>
-            </div>
-            
-            <div class="preview-summary">
-                <div class="summary-grid">
-                    <div class="summary-item"><strong>Members:</strong> ${stats.members}</div>
-                    <div class="summary-item"><strong>Ideas:</strong> ${stats.ideas}</div>
-                    <div class="summary-item"><strong>Tasks:</strong> ${stats.tasks}</div>
-                    <div class="summary-item"><strong>Attendance:</strong> ${stats.attendance}%</div>
-                    <div class="summary-item"><strong>Firebase:</strong> ${stats.connection}</div>
-                    <div class="summary-item"><strong>Sync:</strong> ${stats.syncStatus}</div>
-                </div>
-                
-                <h5>📋 Report Contents:</h5>
-                <ul>
-                    <li>✅ Team Overview & Statistics</li>
-                    <li>✅ Member Performance Data</li>
-                    <li>✅ Detailed Analytics</li>
-                    <li>✅ Firebase Sync Status</li>
-                    <li>✅ Real-time Data Validation</li>
-                </ul>
-                
-                <div class="preview-note">
-                    <p><i class="fas fa-info-circle"></i> This is a preview. Firebase sync is ${this.isOnline ? 'active' : 'offline'}.</p>
-                </div>
-            </div>
-        `;
-    }
-
-    exportData() {
-        const buttonId = 'exportDataBtn';
-        
-        if (this.performance.isButtonBusy(buttonId)) return;
-        this.performance.setBusy(buttonId, true);
-        
-        try {
-            const exportData = {
-                members: this.members,
-                attendance: this.attendance,
-                tasks: this.tasks,
-                ideas: this.ideas,
-                assignedTasks: this.assignedTasks,
-                memberDetails: this.memberDetails,
-                
-                exportInfo: {
-                    exportDate: new Date().toISOString(),
-                    exportTime: new Date().toLocaleString(),
-                    totalMembers: this.members.length,
-                    totalIdeas: this.ideas.length,
-                    totalTasks: this.calculateTotalTasks(),
-                    avgAttendance: this.calculateAvgAttendance(),
-                    connectionStatus: this.isOnline ? 'ONLINE' : 'OFFLINE',
-                    systemVersion: '2.0 Firebase Sync Fixed'
-                },
-                
-                syncStatus: {
-                    isOnline: this.isOnline,
-                    queueLength: this.syncQueue.length,
-                    errorCount: this.syncErrors.length,
-                    lastSync: new Date().toISOString()
-                }
-            };
-            
-            const blob = new Blob([JSON.stringify(exportData, null, 2)], { 
-                type: 'application/json' 
-            });
-            
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `AI_T19_Firebase_Synced_Data_${new Date().toISOString().split('T')[0]}.json`;
-            a.style.display = 'none';
-            
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            this.showMessage('✅ Data exported with Firebase sync status!', 'success');
-            this.logActivity('Data exported with sync status');
-            
-        } catch (error) {
-            console.error('Export error:', error);
-            this.showMessage('❌ Export failed. Please try again.', 'error');
-        } finally {
-            this.performance.setBusy(buttonId, false);
-        }
-    }
-
-    handleExportCategoryChange() {
-        try {
-            const category = document.getElementById('exportCategory').value;
-            const memberSelectGroup = document.getElementById('memberSelectGroup');
-            
-            if (memberSelectGroup) {
-                if (category === 'member-individual') {
-                    memberSelectGroup.style.display = 'block';
-                } else {
-                    memberSelectGroup.style.display = 'none';
-                }
-            }
-        } catch (error) {
-            console.error('Export category change error:', error);
-        }
-    }
-
-    // ADMIN PANEL - All Functions with Sync
+    // ADMIN TAB - All Functions with Sync
     async adminLogin() {
         const buttonId = 'adminLoginBtn';
         
@@ -1608,440 +1244,16 @@ class CompleteTeamManager {
         const membersList = document.getElementById('adminMembersList');
         if (!membersList) return;
         
-        console.log('🔄 Updating admin members list');
-        
-        const html = this.members.map(member => {
-            const details = this.memberDetails[member] || {};
-            const performance = this.calculateMemberPerformance(member);
-            
-            return `
-                <div class="enhanced-member-item">
-                    <div class="member-basic-info">
-                        <div class="member-avatar">
-                            <i class="fas fa-user-circle"></i>
-                        </div>
-                        <div class="member-info">
-                            <h5 class="member-name">${member}</h5>
-                            <p class="member-role">${details.role || 'Team Member'}</p>
-                            <p class="member-status status-${details.status?.toLowerCase() || 'active'}">${details.status || 'Active'}</p>
-                        </div>
-                    </div>
-                    
-                    <div class="member-stats">
-                        <div class="stat-item">
-                            <span class="stat-number">${performance.attendanceRate}%</span>
-                            <span class="stat-label">Attendance</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-number">${performance.taskCount}</span>
-                            <span class="stat-label">Tasks</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-number">${performance.ideaCount}</span>
-                            <span class="stat-label">Ideas</span>
-                        </div>
-                    </div>
-                    
-                    <div class="member-actions">
-                        <button class="btn btn-sm btn-info" onclick="window.teamManager.viewMemberDetails('${member}')">
-                            <i class="fas fa-eye"></i> Details
-                        </button>
-                        <button class="btn btn-sm btn-warning" onclick="window.teamManager.editMemberDetails('${member}')">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button class="btn btn-sm btn-success" onclick="window.teamManager.manageMemberTasks('${member}')">
-                            <i class="fas fa-tasks"></i> Tasks
-                        </button>
-                        <button class="btn btn-sm btn-danger" onclick="window.teamManager.removeMember('${member}')">
-                            <i class="fas fa-trash"></i> Remove
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
+        const html = this.members.map(member => `
+            <div class="member-item">
+                <span>${member}</span>
+                <button class="remove-member-btn" onclick="window.teamManager.removeMember('${member}')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `).join('');
         
         membersList.innerHTML = html;
-    }
-
-    viewMemberDetails(memberName) {
-        try {
-            const member = this.memberDetails[memberName] || {};
-            const performance = this.calculateMemberPerformance(memberName);
-            
-            const modal = document.createElement('div');
-            modal.className = 'member-details-modal';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3><i class="fas fa-user"></i> ${memberName} - Details</h3>
-                        <button class="modal-close" onclick="this.closest('.member-details-modal').remove()">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                    
-                    <div class="modal-body">
-                        <div class="member-details-grid">
-                            <div class="detail-section">
-                                <h4>Basic Information</h4>
-                                <p><strong>Name:</strong> ${member.name || memberName}</p>
-                                <p><strong>Email:</strong> ${member.email || 'Not provided'}</p>
-                                <p><strong>Phone:</strong> ${member.phone || 'Not provided'}</p>
-                                <p><strong>Role:</strong> ${member.role || 'Team Member'}</p>
-                                <p><strong>Join Date:</strong> ${member.joinDate || 'Unknown'}</p>
-                                <p><strong>Status:</strong> 
-                                    <span class="status-badge status-${member.status?.toLowerCase() || 'active'}">
-                                        ${member.status || 'Active'}
-                                    </span>
-                                </p>
-                            </div>
-                            
-                            <div class="detail-section">
-                                <h4>Performance Metrics (Live Sync)</h4>
-                                <p><strong>Sync Status:</strong> ${this.isOnline ? '🟢 Online' : '🔴 Offline'}</p>
-                                <p><strong>Attendance Rate:</strong> ${performance.attendanceRate}%</p>
-                                <p><strong>Tasks Completed:</strong> ${performance.taskCount}</p>
-                                <p><strong>Ideas Shared:</strong> ${performance.ideaCount}</p>
-                                <p><strong>Active Days:</strong> ${performance.activeDays}</p>
-                                <p><strong>Overall Score:</strong> ${performance.score}%</p>
-                                <p><strong>Performance Badge:</strong> ${this.getPerformanceBadge(performance.score)}</p>
-                            </div>
-                            
-                            <div class="detail-section full-width">
-                                <h4>Skills & Notes</h4>
-                                <p><strong>Skills:</strong> ${member.skills?.join(', ') || 'None specified'}</p>
-                                <p><strong>Notes:</strong></p>
-                                <div class="notes-content">${member.notes || 'No notes available'}</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="modal-footer">
-                        <button class="btn btn-warning" onclick="window.teamManager.editMemberDetails('${memberName}')">
-                            <i class="fas fa-edit"></i> Edit Details
-                        </button>
-                        <button class="btn btn-secondary" onclick="this.closest('.member-details-modal').remove()">
-                            Close
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            document.body.appendChild(modal);
-            
-        } catch (error) {
-            console.error('Error viewing member details:', error);
-            this.showMessage('❌ Failed to load member details.', 'error');
-        }
-    }
-
-    editMemberDetails(memberName) {
-        try {
-            const member = this.memberDetails[memberName] || {};
-            
-            const modal = document.createElement('div');
-            modal.className = 'member-edit-modal';
-            modal.innerHTML = `
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3><i class="fas fa-edit"></i> Edit ${memberName}</h3>
-                        <button class="modal-close" onclick="this.closest('.member-edit-modal').remove()">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                    
-                    <div class="modal-body">
-                        <form id="editMemberForm">
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label for="editEmail">Email</label>
-                                    <input type="email" id="editEmail" class="form-control" value="${member.email || ''}" placeholder="Enter email">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="editPhone">Phone</label>
-                                    <input type="tel" id="editPhone" class="form-control" value="${member.phone || ''}" placeholder="Enter phone">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="editRole">Role</label>
-                                    <select id="editRole" class="form-control">
-                                        <option value="Team Member" ${member.role === 'Team Member' ? 'selected' : ''}>Team Member</option>
-                                        <option value="Team Lead" ${member.role === 'Team Lead' ? 'selected' : ''}>Team Lead</option>
-                                        <option value="Developer" ${member.role === 'Developer' ? 'selected' : ''}>Developer</option>
-                                        <option value="Designer" ${member.role === 'Designer' ? 'selected' : ''}>Designer</option>
-                                        <option value="Analyst" ${member.role === 'Analyst' ? 'selected' : ''}>Analyst</option>
-                                    </select>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="editStatus">Status</label>
-                                    <select id="editStatus" class="form-control">
-                                        <option value="Active" ${member.status === 'Active' ? 'selected' : ''}>Active</option>
-                                        <option value="Inactive" ${member.status === 'Inactive' ? 'selected' : ''}>Inactive</option>
-                                        <option value="On Leave" ${member.status === 'On Leave' ? 'selected' : ''}>On Leave</option>
-                                    </select>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="editJoinDate">Join Date</label>
-                                    <input type="date" id="editJoinDate" class="form-control" value="${member.joinDate || ''}">
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="editSkills">Skills (comma-separated)</label>
-                                    <input type="text" id="editSkills" class="form-control" value="${member.skills?.join(', ') || ''}" placeholder="JavaScript, React, Node.js">
-                                </div>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="editNotes">Notes</label>
-                                <textarea id="editNotes" class="form-control" rows="4" placeholder="Add notes about this team member...">${member.notes || ''}</textarea>
-                            </div>
-                        </form>
-                    </div>
-                    
-                    <div class="modal-footer">
-                        <button class="btn btn-success" onclick="window.teamManager.saveMemberDetails('${memberName}')">
-                            <i class="fas fa-save"></i> Save & Sync
-                        </button>
-                        <button class="btn btn-secondary" onclick="this.closest('.member-edit-modal').remove()">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            document.body.appendChild(modal);
-            
-        } catch (error) {
-            console.error('Error editing member details:', error);
-            this.showMessage('❌ Failed to open edit form.', 'error');
-        }
-    }
-
-    async saveMemberDetails(memberName) {
-        try {
-            const form = document.getElementById('editMemberForm');
-            if (!form) return;
-            
-            const updatedDetails = {
-                name: memberName,
-                email: document.getElementById('editEmail').value.trim(),
-                phone: document.getElementById('editPhone').value.trim(),
-                role: document.getElementById('editRole').value,
-                status: document.getElementById('editStatus').value,
-                joinDate: document.getElementById('editJoinDate').value,
-                skills: document.getElementById('editSkills').value.split(',').map(s => s.trim()).filter(s => s),
-                notes: document.getElementById('editNotes').value.trim()
-            };
-            
-            this.memberDetails[memberName] = {
-                ...this.memberDetails[memberName],
-                ...updatedDetails
-            };
-            
-            await this.saveData('memberDetails', this.memberDetails);
-            
-            document.querySelector('.member-edit-modal')?.remove();
-            
-            this.updateAdminMembersList();
-            
-            this.showMessage(`✅ Details saved and synced for ${memberName}!`, 'success');
-            this.logActivity(`Member details updated: ${memberName}`);
-            
-        } catch (error) {
-            console.error('Error saving member details:', error);
-            this.showMessage('❌ Failed to save member details.', 'error');
-        }
-    }
-
-    manageMemberTasks(memberName) {
-        try {
-            const modal = document.createElement('div');
-            modal.className = 'member-tasks-modal';
-            modal.innerHTML = `
-                <div class="modal-content large">
-                    <div class="modal-header">
-                        <h3><i class="fas fa-tasks"></i> Manage Tasks - ${memberName}</h3>
-                        <button class="modal-close" onclick="this.closest('.member-tasks-modal').remove()">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                    
-                    <div class="modal-body">
-                        <div class="task-management-section">
-                            <div class="sync-status">
-                                <p><strong>Firebase Sync:</strong> ${this.isOnline ? '🟢 Online' : '🔴 Offline'}</p>
-                            </div>
-                            
-                            <div class="task-actions">
-                                <h4><i class="fas fa-plus-circle"></i> Add New Task</h4>
-                                <div class="add-task-form">
-                                    <div class="form-group">
-                                        <label for="modalTaskDescription">Task Description</label>
-                                        <textarea id="modalTaskDescription" class="form-control" rows="3" placeholder="Describe the task..." maxlength="500"></textarea>
-                                    </div>
-                                    <button class="btn btn-success" onclick="window.teamManager.addTaskFromModal('${memberName}')">
-                                        <i class="fas fa-plus"></i> Add & Sync Task
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="existing-tasks">
-                                <h4><i class="fas fa-list"></i> Current Tasks</h4>
-                                <div id="modalTasksList">
-                                    <!-- Tasks will be loaded here -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="this.closest('.member-tasks-modal').remove()">
-                            Close
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            document.body.appendChild(modal);
-            
-            this.loadTasksInModal(memberName);
-            
-        } catch (error) {
-            console.error('Error managing member tasks:', error);
-            this.showMessage('❌ Failed to open task management.', 'error');
-        }
-    }
-
-    loadTasksInModal(memberName) {
-        try {
-            const tasksList = document.getElementById('modalTasksList');
-            if (!tasksList) return;
-            
-            const regularTasks = this.tasks[memberName] || [];
-            const assignedTasks = this.assignedTasks[memberName] || [];
-            
-            let html = '';
-            
-            if (regularTasks.length > 0) {
-                html += '<h5>Regular Tasks</h5>';
-                regularTasks.forEach((task, index) => {
-                    html += `
-                        <div class="modal-task-item">
-                            <div class="task-content">
-                                <p>${task.description || task}</p>
-                                <small>Status: ${task.status || 'pending'}</small>
-                            </div>
-                            <div class="task-actions">
-                                <button class="btn btn-sm btn-warning" onclick="window.teamManager.updateTaskStatus('${memberName}', ${index}, 'tasks')">
-                                    Update Status
-                                </button>
-                                <button class="btn btn-sm btn-danger" onclick="window.teamManager.deleteTaskFromModal('${memberName}', ${index}, 'tasks')">
-                                    Delete
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                });
-            }
-            
-            if (assignedTasks.length > 0) {
-                html += '<h5>Assigned Tasks</h5>';
-                assignedTasks.forEach((task, index) => {
-                    html += `
-                        <div class="modal-task-item">
-                            <div class="task-content">
-                                <p><strong>${task.title}</strong></p>
-                                <p>${task.description}</p>
-                                <small>Status: ${task.status || 'pending'} | Priority: ${task.priority || 'normal'}</small>
-                            </div>
-                            <div class="task-actions">
-                                <button class="btn btn-sm btn-warning" onclick="window.teamManager.updateTaskStatus('${memberName}', ${index}, 'assignedTasks')">
-                                    Update Status
-                                </button>
-                                <button class="btn btn-sm btn-danger" onclick="window.teamManager.deleteTaskFromModal('${memberName}', ${index}, 'assignedTasks')">
-                                    Delete
-                                </button>
-                            </div>
-                        </div>
-                    `;
-                });
-            }
-            
-            if (regularTasks.length === 0 && assignedTasks.length === 0) {
-                html = '<p class="no-tasks">No tasks found for this member.</p>';
-            }
-            
-            tasksList.innerHTML = html;
-            
-        } catch (error) {
-            console.error('Error loading tasks in modal:', error);
-        }
-    }
-
-    async addTaskFromModal(memberName) {
-        try {
-            const description = document.getElementById('modalTaskDescription').value.trim();
-            
-            if (!description) {
-                this.showMessage('❌ Please enter a task description!', 'error');
-                return;
-            }
-            
-            const sanitizedDescription = this.sanitizer.sanitizeAndValidate(description, 'task');
-            if (!sanitizedDescription) {
-                this.showMessage('❌ Invalid task description.', 'error');
-                return;
-            }
-            
-            const newTask = {
-                description: sanitizedDescription,
-                status: 'pending',
-                date: new Date().toLocaleDateString(),
-                addedBy: 'Admin',
-                timestamp: new Date().toISOString()
-            };
-            
-            if (!this.tasks[memberName]) this.tasks[memberName] = [];
-            this.tasks[memberName].push(newTask);
-            
-            await this.saveData('tasks', this.tasks);
-            
-            document.getElementById('modalTaskDescription').value = '';
-            
-            this.loadTasksInModal(memberName);
-            
-            this.showMessage(`✅ Task added and synced for ${memberName}!`, 'success');
-            this.logActivity(`Task added from admin for ${memberName}`);
-            
-        } catch (error) {
-            console.error('Error adding task from modal:', error);
-            this.showMessage('❌ Failed to add task.', 'error');
-        }
-    }
-
-    async deleteTaskFromModal(memberName, taskIndex, taskType) {
-        if (confirm('Delete this task?')) {
-            try {
-                if (taskType === 'tasks') {
-                    this.tasks[memberName].splice(taskIndex, 1);
-                    await this.saveData('tasks', this.tasks);
-                } else if (taskType === 'assignedTasks') {
-                    this.assignedTasks[memberName].splice(taskIndex, 1);
-                    await this.saveData('assignedTasks', this.assignedTasks);
-                }
-                
-                this.loadTasksInModal(memberName);
-                
-                this.showMessage('✅ Task deleted and synced!', 'success');
-                this.logActivity(`Task deleted from admin for ${memberName}`);
-                
-            } catch (error) {
-                console.error('Error deleting task:', error);
-                this.showMessage('❌ Failed to delete task.', 'error');
-            }
-        }
     }
 
     removeMember(memberName) {
@@ -2118,113 +1330,67 @@ class CompleteTeamManager {
         }
     }
 
-    // Helper Functions
-    calculateAllMembersPerformance() {
+    exportData() {
+        const buttonId = 'exportDataBtn';
+        
+        if (this.performance.isButtonBusy(buttonId)) return;
+        this.performance.setBusy(buttonId, true);
+        
         try {
-            return this.members.map(member => {
-                const attendanceRate = this.calculateMemberAttendanceRate(member);
-                const ideaCount = this.ideas.filter(idea => idea.member === member).length;
-                const taskCount = this.calculateMemberTaskCount(member);
-                const activeDays = this.calculateMemberActiveDays(member);
+            const exportData = {
+                members: this.members,
+                attendance: this.attendance,
+                tasks: this.tasks,
+                ideas: this.ideas,
+                assignedTasks: this.assignedTasks,
+                memberDetails: this.memberDetails,
                 
-                const attendanceScore = attendanceRate * 0.4;
-                const ideaScore = Math.min(ideaCount * 8, 32);
-                const taskScore = Math.min(taskCount * 4, 20);
-                const activityScore = Math.min(activeDays * 2, 8);
+                exportInfo: {
+                    exportDate: new Date().toISOString(),
+                    exportTime: new Date().toLocaleString(),
+                    totalMembers: this.members.length,
+                    totalIdeas: this.ideas.length,
+                    totalTasks: this.calculateTotalTasks(),
+                    avgAttendance: this.calculateAvgAttendance(),
+                    connectionStatus: this.isOnline ? 'ONLINE' : 'OFFLINE',
+                    systemVersion: '2.0 Firebase Sync Fixed'
+                },
                 
-                const score = Math.round(attendanceScore + ideaScore + taskScore + activityScore);
-                
-                return {
-                    name: member,
-                    attendanceRate,
-                    ideaCount,
-                    taskCount,
-                    activeDays,
-                    score: Math.max(0, Math.min(100, score))
-                };
-            }).sort((a, b) => b.score - a.score);
-        } catch (error) {
-            console.error('Error calculating member performance:', error);
-            return this.members.map(member => ({
-                name: member,
-                attendanceRate: 0,
-                ideaCount: 0,
-                taskCount: 0,
-                activeDays: 0,
-                score: 0
-            }));
-        }
-    }
-
-    calculateMemberPerformance(memberName) {
-        try {
-            const attendanceRate = this.calculateMemberAttendanceRate(memberName);
-            const ideaCount = this.ideas.filter(idea => idea.member === memberName).length;
-            const taskCount = this.calculateMemberTaskCount(memberName);
-            const activeDays = this.calculateMemberActiveDays(memberName);
-            
-            const attendanceScore = attendanceRate * 0.4;
-            const ideaScore = Math.min(ideaCount * 8, 32);
-            const taskScore = Math.min(taskCount * 4, 20);
-            const activityScore = Math.min(activeDays * 2, 8);
-            
-            const score = Math.round(attendanceScore + ideaScore + taskScore + activityScore);
-            
-            return {
-                attendanceRate,
-                ideaCount,
-                taskCount,
-                activeDays,
-                score: Math.max(0, Math.min(100, score))
-            };
-        } catch (error) {
-            console.error('Error calculating member performance:', error);
-            return { attendanceRate: 0, ideaCount: 0, taskCount: 0, activeDays: 0, score: 0 };
-        }
-    }
-
-    calculateMemberAttendanceRate(member) {
-        try {
-            const attendanceDays = Object.keys(this.attendance);
-            if (attendanceDays.length === 0) return 0;
-            
-            let presentDays = 0;
-            attendanceDays.forEach(date => {
-                if (this.attendance[date] && this.attendance[date][member] === 'present') {
-                    presentDays++;
+                syncStatus: {
+                    isOnline: this.isOnline,
+                    queueLength: this.syncQueue.length,
+                    errorCount: this.syncErrors.length,
+                    lastSync: new Date().toISOString()
                 }
+            };
+            
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { 
+                type: 'application/json' 
             });
             
-            return Math.round((presentDays / attendanceDays.length) * 100);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `AI_T19_Firebase_Synced_Data_${new Date().toISOString().split('T')[0]}.json`;
+            a.style.display = 'none';
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            this.showMessage('✅ Data exported with Firebase sync status!', 'success');
+            this.logActivity('Data exported with sync status');
+            
         } catch (error) {
-            console.error('Error calculating attendance rate:', error);
-            return 0;
+            console.error('Export error:', error);
+            this.showMessage('❌ Export failed. Please try again.', 'error');
+        } finally {
+            this.performance.setBusy(buttonId, false);
         }
     }
 
-    calculateMemberTaskCount(member) {
-        try {
-            const regularTasks = this.tasks[member] ? this.tasks[member].length : 0;
-            const assignedTasks = this.assignedTasks[member] ? this.assignedTasks[member].length : 0;
-            return regularTasks + assignedTasks;
-        } catch (error) {
-            console.error('Error calculating task count:', error);
-            return 0;
-        }
-    }
-
-    calculateMemberActiveDays(member) {
-        try {
-            const attendanceDays = Object.keys(this.attendance);
-            return attendanceDays.filter(date => 
-                this.attendance[date] && this.attendance[date][member] === 'present'
-            ).length;
-        } catch (error) {
-            console.error('Error calculating active days:', error);
-            return 0;
-        }
-    }
-
+    // Helper Functions
     calculateTotalTasks() {
         try {
             const regularTasks = Object.values(this.tasks).reduce((total, memberTasks) => total + (memberTasks?.length || 0), 0);
@@ -2283,22 +1449,6 @@ class CompleteTeamManager {
         return new Date(task.deadline) < new Date();
     }
 
-    getPerformanceBadge(score) {
-        if (score >= 90) return '🏆 Excellent';
-        if (score >= 80) return '⭐ Very Good';
-        if (score >= 70) return '👍 Good';
-        if (score >= 60) return '📈 Improving';
-        return '🎯 Focus Needed';
-    }
-
-    getPerformanceBadgeClass(score) {
-        if (score >= 90) return 'badge-excellent';
-        if (score >= 80) return 'badge-very-good';
-        if (score >= 70) return 'badge-good';
-        if (score >= 60) return 'badge-improving';
-        return 'badge-needs-focus';
-    }
-
     // Sync Error Management
     addSyncError(key, error) {
         this.syncErrors.push({
@@ -2355,10 +1505,6 @@ class CompleteTeamManager {
                 'addMemberBtn': () => this.addMember(),
                 'loadTasksBtn': () => this.loadMemberTasks(),
                 'addNewTaskBtn': () => this.addNewTask(),
-                'toggleActivityBtn': () => this.toggleActivityFeed(),
-                'performanceReportBtn': () => this.showPerformanceReport(),
-                'previewReportBtn': () => this.previewReport(),
-                'exportCategoryPdfBtn': () => this.exportCategoryPDF(),
                 'exportDataBtn': () => this.exportData(),
                 'clearDataBtn': () => this.clearAllData(),
                 'logoutAdminBtn': () => this.logoutAdmin()
@@ -2373,11 +1519,6 @@ class CompleteTeamManager {
                     });
                 }
             });
-
-            const exportCategory = document.getElementById('exportCategory');
-            if (exportCategory) {
-                exportCategory.addEventListener('change', () => this.handleExportCategoryChange());
-            }
 
             const radioGroup = document.querySelector('.radio-group');
             if (radioGroup) {
@@ -2477,7 +1618,7 @@ class CompleteTeamManager {
                 if (select) {
                     const currentValue = select.value;
                     
-                    let html = '<option value="">Select a member...</option>';
+                    let html = '<option value="">Choose a member...</option>';
                     
                     if (selectId === 'assignTaskMember') {
                         html += '<option value="all">📢 All Members</option>';
@@ -2604,8 +1745,13 @@ class CompleteTeamManager {
 
     showMessage(message, type = 'success') {
         try {
-            const container = document.getElementById('messageContainer');
-            if (!container) return;
+            let container = document.getElementById('messageContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'messageContainer';
+                container.style.cssText = 'position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 400px;';
+                document.body.appendChild(container);
+            }
             
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
@@ -2653,10 +1799,6 @@ class CompleteTeamManager {
     // Placeholder methods for missing features
     updateRecentAssignedTasks() { 
         console.log('Recent assigned tasks system ready'); 
-    }
-
-    exportCategoryPDF() { 
-        this.showMessage('📄 PDF export coming soon!', 'info'); 
     }
 }
 
