@@ -3,50 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI T19 - Team Management Dashboard</title>
+    <title>AI T19 Team Management System</title>
     
-    <!-- External Libraries -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    
-    <!-- Firebase SDK - Latest Stable Version -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-    
-    <!-- Local CSS -->
+    <!-- CSS Styles -->
     <link rel="stylesheet" href="styles.css">
-    <!-- Add these script tags to your index.html head section -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    
+    <!-- PDF Export Libraries -->
     <script src="https://unpkg.com/jspdf@latest/dist/jspdf.umd.min.js"></script>
     <script src="https://unpkg.com/jspdf-autotable@latest/dist/jspdf.plugin.autotable.min.js"></script>
-
 </head>
 <body>
-    <!-- Smart Connection Status - Only Shows During Changes -->
+    <!-- Connection Status Indicator -->
     <div id="connectionStatus" class="connection-status" style="display: none;">
         <div class="status-content">
-            <i class="fas fa-sync-alt fa-spin" id="statusIcon"></i>
+            <div class="status-indicator"></div>
             <span class="status-text" id="statusText">Connecting...</span>
         </div>
     </div>
 
     <div class="container">
-        <!-- Modern Compact Header -->
+        <!-- Header -->
         <div class="header">
             <div class="header-content">
                 <div class="brand">
-                    <i class="fas fa-users brand-icon"></i>
+                    <div class="brand-icon">
+                        <i class="fas fa-users-cog"></i>
+                    </div>
                     <div class="brand-text">
                         <h1>AI T19</h1>
-                        <span class="brand-subtitle">Team Management</span>
+                        <div class="brand-subtitle">Team Management System</div>
                     </div>
                 </div>
+                
                 <div class="header-controls">
-                    <div class="sync-status" id="syncStatus">
-                        <i class="fas fa-cloud-upload-alt" id="syncIcon"></i>
-                        <span id="syncText">Ready</span>
+                    <div class="sync-status">
+                        <div class="sync-indicator"></div>
+                        <span id="syncText">Initializing...</span>
                     </div>
-                    <div class="powered-by">VasanthaKumar N</div>
+                    <div class="powered-by">Enhanced with Firebase & Real-time Sync</div>
                 </div>
             </div>
         </div>
@@ -54,73 +54,74 @@
         <!-- Navigation Tabs -->
         <div class="nav-tabs">
             <button class="nav-tab active" data-tab="attendance">
-                <i class="fas fa-user-check"></i> Attendance
+                <i class="fas fa-users"></i>
+                <span>Attendance</span>
             </button>
             <button class="nav-tab" data-tab="tasks">
-                <i class="fas fa-tasks"></i> Tasks
+                <i class="fas fa-tasks"></i>
+                <span>Tasks</span>
             </button>
-            <button class="nav-tab" data-tab="brainstorm">
-                <i class="fas fa-lightbulb"></i> Ideas
+            <button class="nav-tab" data-tab="ideas">
+                <i class="fas fa-lightbulb"></i>
+                <span>Ideas</span>
             </button>
             <button class="nav-tab" data-tab="overview">
-                <i class="fas fa-chart-line"></i> Overview
+                <i class="fas fa-tachometer-alt"></i>
+                <span>Overview</span>
             </button>
             <button class="nav-tab" data-tab="admin">
-                <i class="fas fa-cog"></i> Admin
+                <i class="fas fa-cog"></i>
+                <span>Admin</span>
             </button>
         </div>
 
-        <!-- Messages Container -->
-        <div id="messageContainer"></div>
-
-        <!-- Activity Feed -->
-        <div id="activityFeed" class="activity-feed" style="display: none;">
-            <h4><i class="fas fa-stream"></i> Live Activity Feed</h4>
-            <div id="activityList"></div>
-        </div>
-
-        <!-- Attendance Tab -->
+        <!-- ATTENDANCE TAB -->
         <div id="attendance" class="tab-content active">
-            <h2 class="page-title">Daily Live Session Attendance</h2>
-            
+            <div class="page-title">
+                <i class="fas fa-users"></i>
+                Attendance Management
+            </div>
+
             <div class="form-grid">
                 <div class="form-group">
-                    <label for="sessionDate"><i class="fas fa-calendar"></i> Session Date</label>
+                    <label for="sessionDate">
+                        <i class="fas fa-calendar-alt"></i> Session Date
+                    </label>
                     <input type="date" id="sessionDate" class="form-control">
                 </div>
-                
+
                 <div class="form-group">
-                    <label for="attendanceMember"><i class="fas fa-user"></i> Select Member</label>
+                    <label for="attendanceMember">
+                        <i class="fas fa-user"></i> Select Member
+                    </label>
                     <select id="attendanceMember" class="form-control">
-                        <option value="">Choose a team member...</option>
+                        <option value="">Choose a member...</option>
                     </select>
                 </div>
-            </div>
-            
-            <div class="form-group">
-                <label><i class="fas fa-check-circle"></i> Attendance Status</label>
-                <div class="radio-group">
-                    <label class="radio-option">
-                        <input type="radio" name="attendanceStatus" value="present">
-                        <span class="status-badge status-present">
+
+                <div class="form-group">
+                    <label>
+                        <i class="fas fa-check-circle"></i> Attendance Status
+                    </label>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="attendanceStatus" value="present">
                             <i class="fas fa-check"></i> Present
-                        </span>
-                    </label>
-                    <label class="radio-option">
-                        <input type="radio" name="attendanceStatus" value="absent">
-                        <span class="status-badge status-absent">
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="attendanceStatus" value="absent">
                             <i class="fas fa-times"></i> Absent
-                        </span>
-                    </label>
+                        </label>
+                    </div>
                 </div>
             </div>
-            
+
             <div class="btn-group">
                 <button class="btn btn-primary" id="markAttendanceBtn">
-                    <i class="fas fa-save"></i> Mark Attendance
+                    <i class="fas fa-check"></i> Mark Attendance
                 </button>
             </div>
-            
+
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-number" id="presentCount">0</div>
@@ -131,7 +132,7 @@
                     <div class="stat-label">Absent Today</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number" id="notMarkedCount">10</div>
+                    <div class="stat-number" id="notMarkedCount">0</div>
                     <div class="stat-label">Not Marked</div>
                 </div>
                 <div class="stat-card">
@@ -140,134 +141,130 @@
                 </div>
             </div>
 
-            <div id="membersList" class="members-grid"></div>
+            <div id="membersList"></div>
         </div>
 
-        <!-- Tasks Tab -->
+        <!-- TASKS TAB -->
         <div id="tasks" class="tab-content">
-            <h2 class="page-title">Task Management Dashboard</h2>
-            
-            <div class="task-control-section">
-                <h3><i class="fas fa-search"></i> View Member Tasks</h3>
-                <div class="task-selector-container">
-                    <div class="form-group">
-                        <label for="taskMemberSelect"><i class="fas fa-user"></i> Select Member</label>
-                        <select id="taskMemberSelect" class="form-control">
-                            <option value="">Choose a member to view their tasks...</option>
-                        </select>
-                    </div>
-                    <div class="btn-container">
-                        <button class="btn btn-primary" id="loadTasksBtn">
-                            <i class="fas fa-eye"></i> Load Tasks
-                        </button>
-                    </div>
-                </div>
+            <div class="page-title">
+                <i class="fas fa-tasks"></i>
+                Task Management
             </div>
 
-            <div id="taskDashboard" class="task-dashboard" style="display: none;">
-                <div class="member-info-header">
-                    <div class="member-name-display">
-                        <i class="fas fa-user-circle"></i>
-                        <span id="selectedMemberName">Member Name</span>
-                    </div>
-                    <div class="task-summary-stats">
-                        <div class="stat-item">
-                            <span class="stat-number" id="memberTaskCount">0</span>
-                            <span class="stat-label">Total Tasks</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-number" id="memberCompletedTasks">0</span>
-                            <span class="stat-label">Completed</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-number" id="memberPendingTasks">0</span>
-                            <span class="stat-label">Pending</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-number" id="memberInProgressTasks">0</span>
-                            <span class="stat-label">In Progress</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="task-management-section">
-                    <div class="task-actions">
-                        <h3><i class="fas fa-plus-circle"></i> Add New Task</h3>
-                        <div class="add-task-container">
-                            <div class="task-input-group">
-                                <label for="newTaskDescription">Task Description</label>
-                                <textarea id="newTaskDescription" class="form-control" rows="2" 
-                                        placeholder="Describe the task..." maxlength="500"></textarea>
-                                <small>Maximum 500 characters</small>
-                            </div>
-                            <div class="task-btn-group">
-                                <button class="btn btn-success" id="addNewTaskBtn">
-                                    <i class="fas fa-plus"></i> Add Task
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="task-lists">
-                        <div class="task-section">
-                            <h4><i class="fas fa-list-check"></i> Regular Tasks</h4>
-                            <div id="regularTasksList" class="tasks-container">
-                                <div class="no-tasks">No regular tasks yet.</div>
-                            </div>
-                        </div>
-
-                        <div class="task-section">
-                            <h4><i class="fas fa-clipboard-list"></i> Assigned Tasks</h4>
-                            <div id="assignedTasksList" class="tasks-container">
-                                <div class="no-tasks">No assigned tasks yet.</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Ideas Tab -->
-        <div id="brainstorm" class="tab-content">
-            <h2 class="page-title">Brainstorming Hub</h2>
-            
             <div class="form-grid">
                 <div class="form-group">
-                    <label for="ideaMember"><i class="fas fa-user"></i> Your Name</label>
-                    <select id="ideaMember" class="form-control">
-                        <option value="">Select your name...</option>
+                    <label for="taskMemberSelect">
+                        <i class="fas fa-user-tag"></i> Select Member
+                    </label>
+                    <select id="taskMemberSelect" class="form-control">
+                        <option value="">Choose a member...</option>
                     </select>
                 </div>
             </div>
-            
-            <div class="form-group">
-                <label for="ideaContent"><i class="fas fa-lightbulb"></i> Share Your Idea</label>
-                <textarea id="ideaContent" class="form-control" rows="4" placeholder="Share your innovative ideas and suggestions..." maxlength="1000"></textarea>
-                <small>Maximum 1000 characters. HTML will be removed for security.</small>
-            </div>
-            
+
             <div class="btn-group">
-                <button class="btn btn-primary" id="addIdeaBtn">
-                    <i class="fas fa-share"></i> Share Idea
+                <button class="btn btn-primary" id="loadTasksBtn">
+                    <i class="fas fa-tasks"></i> Load Member Tasks
                 </button>
             </div>
-            
-            <div id="ideasBoard" class="idea-board"></div>
+
+            <div id="taskDashboard" style="display: none;">
+                <div class="dashboard-header">
+                    <h3>Tasks for <span id="selectedMemberName"></span></h3>
+                    <div class="dashboard-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('taskDashboard').style.display='none'">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="newTaskDescription">
+                        <i class="fas fa-plus-circle"></i> Add New Task
+                    </label>
+                    <textarea id="newTaskDescription" class="form-control" rows="3" placeholder="Enter task description..." maxlength="500"></textarea>
+                    <small class="form-help">Describe the task clearly (5-500 characters)</small>
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-success" id="addNewTaskBtn">
+                        <i class="fas fa-plus"></i> Add Task
+                    </button>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number" id="memberTaskCount">0</div>
+                        <div class="stat-label">Total Tasks</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="memberCompletedTasks">0</div>
+                        <div class="stat-label">Completed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="memberPendingTasks">0</div>
+                        <div class="stat-label">Pending</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="memberInProgressTasks">0</div>
+                        <div class="stat-label">In Progress</div>
+                    </div>
+                </div>
+
+                <div class="task-section">
+                    <h4><i class="fas fa-list"></i> Regular Tasks</h4>
+                    <div id="regularTasksList" class="tasks-container"></div>
+                </div>
+
+                <div class="task-section">
+                    <h4><i class="fas fa-user-check"></i> Assigned Tasks</h4>
+                    <div id="assignedTasksList" class="tasks-container"></div>
+                </div>
+            </div>
         </div>
 
-        <!-- Overview Tab -->
-        <div id="overview" class="tab-content">
-            <h2 class="page-title">Analytics Dashboard</h2>
-            
+        <!-- IDEAS TAB -->
+        <div id="ideas" class="tab-content">
+            <div class="page-title">
+                <i class="fas fa-lightbulb"></i>
+                Ideas & Innovation
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="ideaMember">
+                        <i class="fas fa-user"></i> Member Name
+                    </label>
+                    <select id="ideaMember" class="form-control">
+                        <option value="">Choose a member...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="ideaContent">
+                    <i class="fas fa-comment-dots"></i> Share Your Idea
+                </label>
+                <textarea id="ideaContent" class="form-control" rows="4" placeholder="Describe your innovative idea..." maxlength="1000"></textarea>
+                <small class="form-help">Share creative solutions, improvements, or new concepts (10-1000 characters)</small>
+            </div>
+
             <div class="btn-group">
-                <button class="btn btn-info" id="toggleActivityBtn">
-                    <i class="fas fa-stream"></i> Show Activity Feed
-                </button>
-                <button class="btn btn-warning" id="performanceReportBtn">
-                    <i class="fas fa-tachometer-alt"></i> Performance Report
+                <button class="btn btn-primary" id="addIdeaBtn">
+                    <i class="fas fa-lightbulb"></i> Share Idea
                 </button>
             </div>
-            
+
+            <div id="ideasBoard" class="ideas-board"></div>
+        </div>
+
+        <!-- OVERVIEW TAB -->
+        <div id="overview" class="tab-content">
+            <div class="page-title">
+                <i class="fas fa-tachometer-alt"></i>
+                System Overview & Reports
+            </div>
+
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-number" id="totalTasks">0</div>
@@ -275,7 +272,7 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-number" id="totalIdeas">0</div>
-                    <div class="stat-label">Total Ideas</div>
+                    <div class="stat-label">Ideas Shared</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-number" id="avgAttendance">0%</div>
@@ -287,252 +284,286 @@
                 </div>
             </div>
 
-            <div class="export-controls-section">
-                <h3><i class="fas fa-download"></i> Category-wise PDF Export</h3>
-                
-                <div class="export-controls">
-                    <div class="export-selector">
-                        <div class="form-group">
-                            <label for="exportCategory"><i class="fas fa-filter"></i> Export Category</label>
-                            <select id="exportCategory" class="form-control">
-                                <option value="complete">📊 Complete Team Report</option>
-                                <option value="attendance">📅 Attendance Report</option>
-                                <option value="tasks">📋 Tasks Report</option>
-                                <option value="ideas">💡 Ideas Report</option>
-                                <option value="performance">🏆 Performance Analysis</option>
-                                <option value="member-individual">👤 Individual Member Report</option>
-                            </select>
-                        </div>
-
-                        <div id="memberSelectGroup" class="form-group" style="display: none;">
-                            <label for="individualMemberSelect"><i class="fas fa-user"></i> Select Member</label>
-                            <select id="individualMemberSelect" class="form-control">
-                                <option value="">Choose member for individual report...</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="export-actions">
-                        <button class="btn btn-secondary" id="previewReportBtn">
+            <div class="overview-actions">
+                <div class="action-group">
+                    <h4>Reports & Analytics</h4>
+                    <div class="btn-group">
+                        <button class="btn btn-info" id="toggleActivityBtn">
+                            <i class="fas fa-stream"></i> Activity Feed
+                        </button>
+                        <button class="btn btn-success" id="performanceReportBtn">
+                            <i class="fas fa-chart-bar"></i> Performance Report
+                        </button>
+                        <button class="btn btn-warning" id="previewReportBtn">
                             <i class="fas fa-eye"></i> Preview Report
                         </button>
+                    </div>
+                </div>
+
+                <div class="action-group">
+                    <h4>Data Export</h4>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="exportDataBtn">
+                            <i class="fas fa-download"></i> Export JSON
+                        </button>
                         <button class="btn btn-danger" id="exportCategoryPdfBtn">
-                            <i class="fas fa-file-pdf"></i> Export as PDF
+                            <i class="fas fa-file-pdf"></i> Export PDF
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div id="reportPreview" class="report-preview-section" style="display: none;">
-                <h3><i class="fas fa-search"></i> Report Preview</h3>
-                <div id="reportPreviewContent" class="report-preview-content"></div>
-            </div>
-
-            <div id="performanceReport" class="performance-report" style="display: none;">
-                <h3><i class="fas fa-chart-bar"></i> Complete Team Performance Analysis</h3>
-                <div id="performanceContent" class="performance-content"></div>
-            </div>
-
-            <div id="performanceSummary"></div>
-        </div>
-
-        <!-- Admin Panel -->
-        <div id="admin" class="tab-content">
-            <div id="adminLogin" class="login-form">
-                <h2><i class="fas fa-shield-alt"></i> Admin Access</h2>
-                
-                <div class="form-group">
-                    <label for="adminPassword"><i class="fas fa-key"></i> Password</label>
-                    <input type="password" id="adminPassword" class="form-control" placeholder="Enter admin password" maxlength="50">
-                </div>
-                
-                <button class="btn btn-primary" id="adminLoginBtn" style="width: 100%;">
-                    <i class="fas fa-sign-in-alt"></i> Access Admin Panel
-                </button>
-                
-                <div id="adminError" class="message error" style="display: none;">
-                    <i class="fas fa-exclamation-triangle"></i> Invalid password. Access denied.
-                </div>
-            </div>
-            
-            <!-- Admin Panel Enhanced Structure -->
-<div id="adminPanel" style="display: none;">
-    <div class="admin-panel-header">
-        <h2><i class="fas fa-crown"></i> Admin Control Panel</h2>
-        <p>Welcome to the enhanced admin dashboard with real-time synchronization.</p>
-    </div>
-    
-    <div class="admin-actions-bar">
-        <div class="admin-quick-stats">
-            <div class="quick-stat">
-                <span class="quick-stat-number" id="totalMembersCount">10</span>
-                <span class="quick-stat-label">Members</span>
-            </div>
-            <div class="quick-stat">
-                <span class="quick-stat-number" id="totalTasksCount">0</span>
-                <span class="quick-stat-label">Tasks</span>
-            </div>
-            <div class="quick-stat">
-                <span class="quick-stat-number" id="totalIdeasCount">0</span>
-                <span class="quick-stat-label">Ideas</span>
-            </div>
-        </div>
-        <div class="admin-actions">
-            <button class="btn btn-info btn-sm" id="exportDataBtn">
-                <i class="fas fa-download"></i> Export JSON
-            </button>
-            <button class="btn btn-warning btn-sm admin-tooltip" data-tooltip="This will clear all data permanently">
-                <i class="fas fa-broom"></i> Clear All Data
-            </button>
-        </div>
-    </div>
-    
-    <div class="admin-section">
-        <div class="admin-section-header">
-            <h3><i class="fas fa-users-cog"></i> Member Management</h3>
-            <p>Add, edit, and manage team members with enhanced controls</p>
-        </div>
-        <div class="admin-section-content">
-            <div class="add-member-form">
-                <div class="form-row">
+            <div class="export-options">
+                <h4><i class="fas fa-file-export"></i> PDF Export Configuration</h4>
+                <div class="form-grid">
                     <div class="form-group">
-                        <label for="newMemberName"><i class="fas fa-user-plus"></i> Add New Member</label>
-                        <input type="text" id="newMemberName" class="form-control" placeholder="Enter member name" maxlength="50">
-                        <small class="form-help">2-50 characters, letters and spaces only</small>
-                    </div>
-                    <button class="btn btn-success" id="addMemberBtn">
-                        <i class="fas fa-user-plus"></i> Add Member
-                    </button>
-                </div>
-            </div>
-            
-            <div class="recent-tasks-container">
-                <div class="recent-tasks-header">
-                    <h4><i class="fas fa-users"></i> Current Members</h4>
-                    <span class="tasks-count-badge" id="membersCountBadge">10</span>
-                </div>
-                <div id="adminMembersList">
-                    <!-- Enhanced member items will be populated here -->
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="admin-section">
-        <div class="admin-section-header">
-            <h3><i class="fas fa-tasks"></i> Advanced Task Assignment</h3>
-            <p>Assign tasks to team members with priorities and deadlines</p>
-        </div>
-        <div class="admin-section-content">
-            <div class="task-assignment-form">
-                <div class="assignment-form-grid">
-                    <div class="form-group">
-                        <label for="assignTaskMember">Assign To</label>
-                        <select id="assignTaskMember" class="form-control">
-                            <option value="">Select member...</option>
-                            <option value="all">📢 All Members</option>
+                        <label for="exportCategory">Export Category</label>
+                        <select id="exportCategory" class="form-control">
+                            <option value="performance-analysis">Performance Analysis</option>
+                            <option value="complete-team-report">Complete Team Report</option>
+                            <option value="individual-member-report">Individual Member Report</option>
                         </select>
                     </div>
-                    
                     <div class="form-group">
-                        <label for="taskTitle">Task Title</label>
-                        <input type="text" id="taskTitle" class="form-control" placeholder="Enter task title" maxlength="100">
-                        <small class="form-help">5-100 characters, HTML will be removed</small>
+                        <label for="individualMemberSelect">Individual Member (if selected above)</label>
+                        <select id="individualMemberSelect" class="form-control">
+                            <option value="">Choose a member...</option>
+                        </select>
                     </div>
+                </div>
+            </div>
+
+            <!-- Activity Feed -->
+            <div id="activityFeed" class="report-section" style="display: none;">
+                <div class="report-header">
+                    <h4><i class="fas fa-stream"></i> Activity Feed</h4>
+                    <button class="btn btn-sm btn-secondary" onclick="document.getElementById('activityFeed').style.display='none'">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+                <div id="activityList" class="report-content"></div>
+            </div>
+
+            <!-- Performance Report -->
+            <div id="performanceReport" class="report-section" style="display: none;">
+                <div class="report-header">
+                    <h4><i class="fas fa-chart-bar"></i> Performance Report</h4>
+                    <button class="btn btn-sm btn-secondary" onclick="document.getElementById('performanceReport').style.display='none'">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+                <div id="performanceContent" class="report-content"></div>
+            </div>
+
+            <!-- Report Preview -->
+            <div id="reportPreview" class="report-section" style="display: none;">
+                <div class="report-header">
+                    <h4><i class="fas fa-file-alt"></i> Report Preview</h4>
+                    <button class="btn btn-sm btn-secondary" onclick="document.getElementById('reportPreview').style.display='none'">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+                <div id="reportPreviewContent" class="report-content"></div>
+            </div>
+        </div>
+
+        <!-- ADMIN TAB -->
+        <div id="admin" class="tab-content">
+            <div class="page-title">
+                <i class="fas fa-cog"></i>
+                Administration Panel
+            </div>
+
+            <!-- Admin Login -->
+            <div id="adminLogin" class="admin-login-section">
+                <div class="admin-login-header">
+                    <h3><i class="fas fa-shield-alt"></i> Admin Authentication</h3>
+                    <p>Enter admin credentials to access management features</p>
                 </div>
                 
                 <div class="form-group">
-                    <label for="taskDescription">Task Description</label>
-                    <textarea id="taskDescription" class="form-control" rows="3" placeholder="Describe the task in detail..." maxlength="500"></textarea>
-                    <small class="form-help">10-500 characters, HTML will be removed</small>
+                    <label for="adminPassword">
+                        <i class="fas fa-lock"></i> Admin Password
+                    </label>
+                    <input type="password" id="adminPassword" class="form-control" placeholder="Enter admin password">
+                </div>
+
+                <div class="btn-group">
+                    <button class="btn btn-primary" id="adminLoginBtn">
+                        <i class="fas fa-sign-in-alt"></i> Access Admin Panel
+                    </button>
+                </div>
+
+                <div id="adminError" class="message error" style="display: none;">
+                    Invalid admin credentials. Please try again.
+                </div>
+            </div>
+
+            <!-- Admin Panel -->
+            <div id="adminPanel" class="admin-panel-section" style="display: none;">
+                <div class="admin-panel-header">
+                    <h2><i class="fas fa-crown"></i> Admin Control Panel</h2>
+                    <p>Welcome to the enhanced admin dashboard with real-time synchronization</p>
                 </div>
                 
-                <div class="assignment-form-grid">
-                    <div class="form-group">
-                        <label>Priority Level</label>
-                        <div class="priority-group">
-                            <label class="priority-option low">
-                                <input type="radio" name="taskPriority" value="low">
-                                🟢 Low Priority
-                            </label>
-                            <label class="priority-option medium">
-                                <input type="radio" name="taskPriority" value="medium">
-                                🟡 Medium Priority
-                            </label>
-                            <label class="priority-option high">
-                                <input type="radio" name="taskPriority" value="high" checked>
-                                🔴 High Priority
-                            </label>
-                            <label class="priority-option urgent">
-                                <input type="radio" name="taskPriority" value="urgent">
-                                🚨 Urgent
-                            </label>
+                <div class="admin-actions-bar">
+                    <div class="admin-quick-stats">
+                        <div class="quick-stat">
+                            <span class="quick-stat-number" id="totalMembersCount">10</span>
+                            <span class="quick-stat-label">Members</span>
+                        </div>
+                        <div class="quick-stat">
+                            <span class="quick-stat-number" id="totalTasksCount">0</span>
+                            <span class="quick-stat-label">Tasks</span>
+                        </div>
+                        <div class="quick-stat">
+                            <span class="quick-stat-number" id="totalIdeasCount">0</span>
+                            <span class="quick-stat-label">Ideas</span>
                         </div>
                     </div>
-                    
-                    <div class="form-group">
-                        <label for="taskDeadline">Deadline</label>
-                        <input type="date" id="taskDeadline" class="form-control">
+                    <div class="admin-actions">
+                        <button class="btn btn-info btn-sm">
+                            <i class="fas fa-download"></i> Export JSON
+                        </button>
+                        <button class="btn btn-danger btn-sm" id="clearDataBtn">
+                            <i class="fas fa-broom"></i> Clear All Data
+                        </button>
                     </div>
                 </div>
                 
-                <button class="btn btn-primary btn-lg" id="assignTaskBtn">
-                    <i class="fas fa-paper-plane"></i> Assign Task
-                </button>
-            </div>
-            
-            <div class="recent-tasks-container">
-                <div class="recent-tasks-header">
-                    <h4><i class="fas fa-history"></i> Recently Assigned Tasks</h4>
-                    <span class="tasks-count-badge" id="recentTasksCount">0</span>
+                <!-- MEMBER MANAGEMENT SECTION -->
+                <div class="admin-section">
+                    <div class="admin-section-header">
+                        <h3><i class="fas fa-users-cog"></i> Member Management</h3>
+                        <p>Add, edit, and manage team members with enhanced controls</p>
+                    </div>
+                    <div class="admin-section-content">
+                        <!-- ADD MEMBER FORM -->
+                        <div class="add-member-form">
+                            <h4><i class="fas fa-user-plus"></i> Add New Member</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="newMemberName">
+                                        <i class="fas fa-user-plus"></i> Member Name
+                                    </label>
+                                    <input type="text" id="newMemberName" class="form-control" placeholder="Enter member name" maxlength="50">
+                                    <small class="form-help">2-50 characters, letters and spaces only</small>
+                                </div>
+                                <button class="btn btn-success" id="addMemberBtn">
+                                    <i class="fas fa-user-plus"></i> Add Member
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- MEMBERS LIST -->
+                        <div class="members-container">
+                            <div class="container-header">
+                                <h4><i class="fas fa-users"></i> Current Members</h4>
+                                <span class="count-badge" id="membersCountBadge">10</span>
+                            </div>
+                            <div id="adminMembersList" class="members-list">
+                                <!-- Member items populated here -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div id="recentTasksList">
-                    <!-- Recent tasks will be populated here -->
+                
+                <!-- TASK ASSIGNMENT SECTION -->
+                <div class="admin-section">
+                    <div class="admin-section-header">
+                        <h3><i class="fas fa-tasks"></i> Advanced Task Assignment</h3>
+                        <p>Assign tasks to team members with priorities and deadlines</p>
+                    </div>
+                    <div class="admin-section-content">
+                        <div class="task-assignment-form">
+                            <div class="assignment-form-grid">
+                                <div class="form-group">
+                                    <label for="assignTaskMember">Assign To</label>
+                                    <select id="assignTaskMember" class="form-control">
+                                        <option value="">Select member...</option>
+                                        <option value="all">All Members</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="taskTitle">Task Title</label>
+                                    <input type="text" id="taskTitle" class="form-control" placeholder="Enter task title" maxlength="100">
+                                    <small class="form-help">5-100 characters</small>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="taskDescription">Task Description</label>
+                                <textarea id="taskDescription" class="form-control" rows="3" placeholder="Describe the task in detail..." maxlength="500"></textarea>
+                                <small class="form-help">10-500 characters</small>
+                            </div>
+                            
+                            <div class="assignment-form-grid">
+                                <div class="form-group">
+                                    <label>Priority Level</label>
+                                    <div class="priority-group">
+                                        <label class="priority-option low">
+                                            <input type="radio" name="taskPriority" value="low">
+                                            <span class="priority-indicator low"></span> Low Priority
+                                        </label>
+                                        <label class="priority-option medium">
+                                            <input type="radio" name="taskPriority" value="medium">
+                                            <span class="priority-indicator medium"></span> Medium Priority
+                                        </label>
+                                        <label class="priority-option high">
+                                            <input type="radio" name="taskPriority" value="high" checked>
+                                            <span class="priority-indicator high"></span> High Priority
+                                        </label>
+                                        <label class="priority-option urgent">
+                                            <input type="radio" name="taskPriority" value="urgent">
+                                            <span class="priority-indicator urgent"></span> Urgent
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="taskDeadline">Deadline</label>
+                                    <input type="date" id="taskDeadline" class="form-control">
+                                </div>
+                            </div>
+                            
+                            <button class="btn btn-primary btn-lg" id="assignTaskBtn">
+                                <i class="fas fa-paper-plane"></i> Assign Task
+                            </button>
+                        </div>
+                        
+                        <!-- RECENT ASSIGNED TASKS -->
+                        <div class="tasks-container">
+                            <div class="container-header">
+                                <h4><i class="fas fa-history"></i> Recently Assigned Tasks</h4>
+                                <span class="count-badge" id="recentTasksCount">0</span>
+                            </div>
+                            <div id="recentTasksList" class="tasks-list">
+                                <!-- Recent tasks populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ADMIN FOOTER ACTIONS -->
+                <div class="admin-footer-actions">
+                    <div class="danger-zone">
+                        <button class="btn btn-danger" id="clearAllDataBtn">
+                            <i class="fas fa-exclamation-triangle"></i> Clear All Data
+                        </button>
+                    </div>
+                    <div class="logout-section">
+                        <span>Admin Session Active</span>
+                        <button class="btn btn-secondary" id="logoutAdminBtn">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    
-    <div class="admin-footer-actions">
-        <div class="danger-zone">
-            <button class="btn btn-danger" id="clearDataBtn">
-                <i class="fas fa-exclamation-triangle"></i> Clear All Data
-            </button>
-        </div>
-        <div class="logout-section">
-            <span>Admin Session Active</span>
-            <button class="btn btn-secondary" id="logoutAdminBtn">
-                <i class="fas fa-sign-out-alt"></i> Logout
-            </button>
-        </div>
-    </div>
-</div>
 
-
-    <!-- Message Container for Notifications -->
-<div id="messageContainer" style="position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 400px;"></div>
-
-<!-- Enhanced Connection Status -->
-<div id="connectionStatus" class="connection-status" style="display: none;">
-    <div class="status-content">
-        <i id="statusIcon" class="fas fa-wifi"></i>
-        <span id="statusText" class="status-text">Connected</span>
-    </div>
-</div>
-
-<!-- Loading Firebase Scripts -->
-<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
-
-<!-- Optional: jsPDF for PDF Export -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-<!-- Font Awesome for Icons -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-<!-- Your Main Script -->
-<script src="script.js"></script>
-
+    <!-- Main Application Script -->
+    <script src="script.js"></script>
 </body>
 </html>
