@@ -16,6 +16,10 @@
     
     <!-- Local CSS -->
     <link rel="stylesheet" href="styles.css">
+    <!-- Add these script tags to your index.html head section -->
+    <script src="https://unpkg.com/jspdf@latest/dist/jspdf.umd.min.js"></script>
+    <script src="https://unpkg.com/jspdf-autotable@latest/dist/jspdf.plugin.autotable.min.js"></script>
+
 </head>
 <body>
     <!-- Smart Connection Status - Only Shows During Changes -->
@@ -351,105 +355,159 @@
                 </div>
             </div>
             
-            <div id="adminPanel" style="display: none;">
-                <div class="admin-panel">
-                    <h2><i class="fas fa-crown"></i> Admin Control Panel</h2>
-                    <p>Welcome to the admin dashboard with real-time synchronization.</p>
-                    
-                    <div class="admin-controls">
-                        <button class="admin-btn" id="exportDataBtn">
-                            <i class="fas fa-download"></i> Export JSON
-                        </button>
-                        <button class="admin-btn" id="clearDataBtn">
-                            <i class="fas fa-trash"></i> Clear All Data
-                        </button>
-                        <button class="admin-btn" id="logoutAdminBtn">
-                            <i class="fas fa-sign-out-alt"></i> Logout
-                        </button>
+            <!-- Admin Panel Enhanced Structure -->
+<div id="adminPanel" style="display: none;">
+    <div class="admin-panel-header">
+        <h2><i class="fas fa-crown"></i> Admin Control Panel</h2>
+        <p>Welcome to the enhanced admin dashboard with real-time synchronization.</p>
+    </div>
+    
+    <div class="admin-actions-bar">
+        <div class="admin-quick-stats">
+            <div class="quick-stat">
+                <span class="quick-stat-number" id="totalMembersCount">10</span>
+                <span class="quick-stat-label">Members</span>
+            </div>
+            <div class="quick-stat">
+                <span class="quick-stat-number" id="totalTasksCount">0</span>
+                <span class="quick-stat-label">Tasks</span>
+            </div>
+            <div class="quick-stat">
+                <span class="quick-stat-number" id="totalIdeasCount">0</span>
+                <span class="quick-stat-label">Ideas</span>
+            </div>
+        </div>
+        <div class="admin-actions">
+            <button class="btn btn-info btn-sm" id="exportDataBtn">
+                <i class="fas fa-download"></i> Export JSON
+            </button>
+            <button class="btn btn-warning btn-sm admin-tooltip" data-tooltip="This will clear all data permanently">
+                <i class="fas fa-broom"></i> Clear All Data
+            </button>
+        </div>
+    </div>
+    
+    <div class="admin-section">
+        <div class="admin-section-header">
+            <h3><i class="fas fa-users-cog"></i> Member Management</h3>
+            <p>Add, edit, and manage team members with enhanced controls</p>
+        </div>
+        <div class="admin-section-content">
+            <div class="add-member-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="newMemberName"><i class="fas fa-user-plus"></i> Add New Member</label>
+                        <input type="text" id="newMemberName" class="form-control" placeholder="Enter member name" maxlength="50">
+                        <small class="form-help">2-50 characters, letters and spaces only</small>
                     </div>
+                    <button class="btn btn-success" id="addMemberBtn">
+                        <i class="fas fa-user-plus"></i> Add Member
+                    </button>
                 </div>
-
-                <div class="backup-section">
-                    <h3><i class="fas fa-users-cog"></i> Member Management</h3>
-                    
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="newMemberName"><i class="fas fa-user-plus"></i> Add New Member</label>
-                            <input type="text" id="newMemberName" class="form-control" placeholder="Enter member name" maxlength="50">
-                            <small>2-50 characters, letters and spaces only</small>
-                        </div>
-                    </div>
-                    
-                    <div class="btn-group">
-                        <button class="btn btn-success" id="addMemberBtn">
-                            <i class="fas fa-user-plus"></i> Add Member
-                        </button>
-                    </div>
-
-                    <div class="current-members">
-                        <h4><i class="fas fa-list"></i> Current Members</h4>
-                        <div id="adminMembersList" class="members-list"></div>
-                    </div>
+            </div>
+            
+            <div class="recent-tasks-container">
+                <div class="recent-tasks-header">
+                    <h4><i class="fas fa-users"></i> Current Members</h4>
+                    <span class="tasks-count-badge" id="membersCountBadge">10</span>
                 </div>
-
-                <div class="backup-section">
-                    <h3><i class="fas fa-tasks"></i> Advanced Task Assignment</h3>
-                    
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="assignTaskMember"><i class="fas fa-user"></i> Assign To</label>
-                            <select id="assignTaskMember" class="form-control" required>
-                                <option value="">Select member...</option>
-                                <option value="all">📢 All Members</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="assignTaskTitle"><i class="fas fa-clipboard-list"></i> Task Title</label>
-                        <input type="text" id="assignTaskTitle" class="form-control" 
-                               placeholder="Enter task title" 
-                               minlength="5" maxlength="100">
-                        <small>5-100 characters, HTML will be removed</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="assignTaskDescription"><i class="fas fa-align-left"></i> Task Description</label>
-                        <textarea id="assignTaskDescription" class="form-control" rows="3" 
-                                placeholder="Detailed task description" 
-                                minlength="10" maxlength="500"></textarea>
-                        <small>10-500 characters, HTML will be removed</small>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="taskPriority"><i class="fas fa-flag"></i> Priority Level</label>
-                        <select id="taskPriority" class="form-control">
-                            <option value="low">🟢 Low Priority</option>
-                            <option value="medium">🟡 Medium Priority</option>
-                            <option value="high">🔴 High Priority</option>
-                            <option value="urgent">🚨 Urgent</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="taskDeadline"><i class="fas fa-calendar-day"></i> Deadline</label>
-                        <input type="datetime-local" id="taskDeadline" class="form-control" required>
-                    </div>
-                    
-                    <div class="btn-group">
-                        <button class="btn btn-primary" id="assignTaskBtn">
-                            <i class="fas fa-plus"></i> Assign Task
-                        </button>
-                    </div>
-                    
-                    <div class="assigned-tasks-overview">
-                        <h4><i class="fas fa-list-check"></i> Recently Assigned Tasks</h4>
-                        <div id="recentAssignedTasks" class="recent-tasks-list"></div>
-                    </div>
+                <div id="adminMembersList">
+                    <!-- Enhanced member items will be populated here -->
                 </div>
             </div>
         </div>
     </div>
+    
+    <div class="admin-section">
+        <div class="admin-section-header">
+            <h3><i class="fas fa-tasks"></i> Advanced Task Assignment</h3>
+            <p>Assign tasks to team members with priorities and deadlines</p>
+        </div>
+        <div class="admin-section-content">
+            <div class="task-assignment-form">
+                <div class="assignment-form-grid">
+                    <div class="form-group">
+                        <label for="assignTaskMember">Assign To</label>
+                        <select id="assignTaskMember" class="form-control">
+                            <option value="">Select member...</option>
+                            <option value="all">📢 All Members</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="taskTitle">Task Title</label>
+                        <input type="text" id="taskTitle" class="form-control" placeholder="Enter task title" maxlength="100">
+                        <small class="form-help">5-100 characters, HTML will be removed</small>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="taskDescription">Task Description</label>
+                    <textarea id="taskDescription" class="form-control" rows="3" placeholder="Describe the task in detail..." maxlength="500"></textarea>
+                    <small class="form-help">10-500 characters, HTML will be removed</small>
+                </div>
+                
+                <div class="assignment-form-grid">
+                    <div class="form-group">
+                        <label>Priority Level</label>
+                        <div class="priority-group">
+                            <label class="priority-option low">
+                                <input type="radio" name="taskPriority" value="low">
+                                🟢 Low Priority
+                            </label>
+                            <label class="priority-option medium">
+                                <input type="radio" name="taskPriority" value="medium">
+                                🟡 Medium Priority
+                            </label>
+                            <label class="priority-option high">
+                                <input type="radio" name="taskPriority" value="high" checked>
+                                🔴 High Priority
+                            </label>
+                            <label class="priority-option urgent">
+                                <input type="radio" name="taskPriority" value="urgent">
+                                🚨 Urgent
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="taskDeadline">Deadline</label>
+                        <input type="date" id="taskDeadline" class="form-control">
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary btn-lg" id="assignTaskBtn">
+                    <i class="fas fa-paper-plane"></i> Assign Task
+                </button>
+            </div>
+            
+            <div class="recent-tasks-container">
+                <div class="recent-tasks-header">
+                    <h4><i class="fas fa-history"></i> Recently Assigned Tasks</h4>
+                    <span class="tasks-count-badge" id="recentTasksCount">0</span>
+                </div>
+                <div id="recentTasksList">
+                    <!-- Recent tasks will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="admin-footer-actions">
+        <div class="danger-zone">
+            <button class="btn btn-danger" id="clearDataBtn">
+                <i class="fas fa-exclamation-triangle"></i> Clear All Data
+            </button>
+        </div>
+        <div class="logout-section">
+            <span>Admin Session Active</span>
+            <button class="btn btn-secondary" id="logoutAdminBtn">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        </div>
+    </div>
+</div>
+
 
     <!-- Message Container for Notifications -->
 <div id="messageContainer" style="position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 400px;"></div>
